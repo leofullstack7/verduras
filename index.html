@@ -120,6 +120,8 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
 .pimg img{width:clamp(44px,9dvh,70px);height:clamp(44px,9dvh,70px);object-fit:cover;border-radius:16px}
 .pname{font-family:'Fredoka';font-weight:600;font-size:14.5px;text-align:center;line-height:1.15}
 .punit{font-size:11.5px;color:var(--ink-soft);font-weight:800;text-transform:uppercase;letter-spacing:.4px}
+.unit-sel{border:2px solid var(--line);border-radius:10px;padding:4px 6px;font-weight:800;font-size:11px;background:#fff;max-width:58px}
+.check-row{display:flex;align-items:center;gap:10px}
 .badge-top{position:absolute;top:8px;left:10px;font-size:10px;font-weight:800;font-family:'Nunito';background:var(--yellow-soft);
   color:#8a6a00;border-radius:20px;padding:3px 8px;z-index:2}
 .stepper{display:flex;align-items:center;gap:6px}
@@ -280,7 +282,7 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
         <div class="field"><label>Contraseña</label><input id="loginPass" type="password" autocomplete="current-password" placeholder="••••••" onkeydown="if(event.key==='Enter')doLogin()"></div>
         <button class="btn green block" onclick="doLogin()">Entrar</button>
       </div>
-      <div class="login-hint">Demo · <code>olga</code> / <code>1234</code> · <code>terraza</code> / <code>terraza1</code> · <code>carretero</code> / <code>carretero1</code> · <code>solar</code> / <code>solar1</code></div>
+      <div class="login-hint">Demo · <code>olga</code>/<code>1234</code> · <code>carlos</code>/<code>carlos1</code> · <code>terraza</code>/<code>terraza1</code> · <code>carretero</code>/<code>carretero1</code></div>
     </div>
   </section>
 
@@ -332,6 +334,16 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
       <p style="color:var(--ink-soft);font-weight:700" id="successMsg"></p>
       <button class="btn green" onclick="afterSuccess()">Listo 🎉</button>
     </div>
+  </section>
+
+  <!-- ===================== OPERARIO ===================== -->
+  <section class="view" id="v-worker">
+    <div class="topbar">
+      <div><h1>Pesar pedidos</h1><div class="sub" id="workerSub"></div></div>
+      <div class="spacer"></div>
+      <button class="icon-btn" onclick="logout()">🚪</button>
+    </div>
+    <div class="content"><div id="workerBody" class="scrolly" style="flex:1"></div></div>
   </section>
 
   <!-- ===================== ADMIN ===================== -->
@@ -397,16 +409,20 @@ async function callOpenAI(messages,maxTokens=1000){
 
 /* ---------- datos semilla ---------- */
 const SEED_PRODUCTS=[
- {id:'p1',name:'Papa pastusa',unit:'bulto',emoji:'🥔',tint:'#FFF6D9',edge:'#DDA400',active:true},
- {id:'p2',name:'Cebolla cabezona',unit:'bulto',emoji:'🧅',tint:'#F3E8FF',edge:'#9333EA',active:true},
- {id:'p3',name:'Tomate chonto',unit:'canastilla',emoji:'🍅',tint:'#FDECEC',edge:'#E5484D',active:true},
- {id:'p4',name:'Zanahoria',unit:'kilo',emoji:'🥕',tint:'#FFEEDF',edge:'#FF7A1F',active:true},
- {id:'p5',name:'Plátano verde',unit:'kilo',emoji:'🍌',tint:'#E8F8EE',edge:'#1FA84D',active:true},
- {id:'p6',name:'Limón Tahití',unit:'kilo',emoji:'🍋',tint:'#FFF6D9',edge:'#DDA400',active:true},
- {id:'p7',name:'Aguacate Hass',unit:'canastilla',emoji:'🥑',tint:'#E8F8EE',edge:'#1FA84D',active:true},
- {id:'p8',name:'Cilantro',unit:'rollo',emoji:'🌿',tint:'#E8F8EE',edge:'#1FA84D',active:true},
- {id:'p9',name:'Pimentón',unit:'kilo',emoji:'🫑',tint:'#FDECEC',edge:'#E5484D',active:true},
- {id:'p10',name:'Lechuga Batavia',unit:'unidad',emoji:'🥬',tint:'#E8F8EE',edge:'#1FA84D',active:true},
+ {id:'p1',name:'Papa pastusa',emoji:'🥔',tint:'#FFF6D9',edge:'#DDA400',active:true},
+ {id:'p2',name:'Cebolla cabezona',emoji:'🧅',tint:'#F3E8FF',edge:'#9333EA',active:true},
+ {id:'p3',name:'Tomate chonto',emoji:'🍅',tint:'#FDECEC',edge:'#E5484D',active:true},
+ {id:'p4',name:'Zanahoria',emoji:'🥕',tint:'#FFEEDF',edge:'#FF7A1F',active:true},
+ {id:'p5',name:'Plátano verde',emoji:'🍌',tint:'#E8F8EE',edge:'#1FA84D',active:true},
+ {id:'p6',name:'Limón Tahití',emoji:'🍋',tint:'#FFF6D9',edge:'#DDA400',active:true},
+ {id:'p7',name:'Aguacate Hass',emoji:'🥑',tint:'#E8F8EE',edge:'#1FA84D',active:true},
+ {id:'p8',name:'Cilantro',emoji:'🌿',tint:'#E8F8EE',edge:'#1FA84D',active:true},
+ {id:'p9',name:'Pimentón',emoji:'🫑',tint:'#FDECEC',edge:'#E5484D',active:true},
+ {id:'p10',name:'Lechuga Batavia',emoji:'🥬',tint:'#E8F8EE',edge:'#1FA84D',active:true},
+];
+const SEED_WORKERS=[
+ {id:'w1',name:'Carlos',username:'carlos',password:'carlos1'},
+ {id:'w2',name:'María',username:'maria',password:'maria1'},
 ];
 const SEED_ADMIN={username:'olga',password:'1234',name:'Olga'};
 const SEED_CLIENTS=[
@@ -414,18 +430,22 @@ const SEED_CLIENTS=[
  {id:'c2',name:'Hotel Carretero',type:'hotel',phone:'3014445566',address:'Calle 70 #22-15',emoji:'🏨',username:'carretero',password:'carretero1'},
  {id:'c3',name:'Gastrobar El Solar',type:'gastrobar',phone:'3027778899',address:'Av. Nutibara #33-08',emoji:'🍸',username:'solar',password:'solar1'},
 ];
+function orderShift(time){
+  const [h,m]=(time||'12:00').split(':').map(Number);
+  const mins=h*60+(m||0);
+  return (mins>=840&&mins<=1439)?'madrugada':'manana';
+}
+function shiftLabel(s){return s==='madrugada'?'🌙 Compra madrugada (3–6 am)':'☀️ Turno mañana';}
 function seedOrders(){
   const days=[-1,-2,-3,-5,-7]; const out=[];
-  const mk=(cid,dOff,items)=>{const d=new Date();d.setDate(d.getDate()+dOff);
-    out.push({id:uid(),clientId:cid,date:d.toISOString().slice(0,10),time:'07:'+String(10+out.length).padStart(2,'0'),
-      channel:'app',status:'cerrado',items});};
-  mk('c1',-1,[{p:'p1',q:2},{p:'p3',q:1},{p:'p8',q:5}]);
-  mk('c1',-2,[{p:'p1',q:2},{p:'p3',q:2},{p:'p4',q:6}]);
-  mk('c1',-3,[{p:'p1',q:3},{p:'p3',q:1}]);
-  mk('c2',-1,[{p:'p7',q:2},{p:'p6',q:10},{p:'p1',q:1}]);
-  mk('c2',-2,[{p:'p7',q:1},{p:'p6',q:8}]);
-  mk('c3',-1,[{p:'p6',q:4},{p:'p9',q:3},{p:'p10',q:12}]);
-  mk('c3',-3,[{p:'p6',q:5},{p:'p10',q:10}]);
+  const mk=(cid,dOff,items,time,desc,del)=>{const d=new Date();d.setDate(d.getDate()+dOff);
+    out.push({id:uid(),clientId:cid,date:d.toISOString().slice(0,10),time:time||'07:30',
+      channel:'app',status:'cerrado',description:desc||'',deliveryTime:del||'07:00',shift:orderShift(time||'07:30'),
+      items:items.map(it=>({p:it.p,q:it.q,u:it.u||'kilo'}))});};
+  mk('c1',-1,[{p:'p1',q:2,u:'kilo'},{p:'p3',q:1,u:'kilo'},{p:'p8',q:5,u:'unidad'}]);
+  mk('c1',-2,[{p:'p1',q:2,u:'kilo'},{p:'p3',q:2,u:'kilo'},{p:'p4',q:6,u:'kilo'}]);
+  mk('c2',-1,[{p:'p7',q:2,u:'unidad'},{p:'p6',q:10,u:'kilo'},{p:'p1',q:1,u:'kilo'}],'19:30','Pedido cena','06:00');
+  mk('c3',-1,[{p:'p6',q:4,u:'kilo'},{p:'p9',q:3,u:'kilo'},{p:'p10',q:12,u:'unidad'}]);
   return out;
 }
 
@@ -436,16 +456,26 @@ async function loadDB(){
     const r=await window.storage.get('fruver-db');
     if(r&&r.value){DB=JSON.parse(r.value);migrateDB();return;}
   }catch(e){/* clave no existe aún */}
-  DB={products:SEED_PRODUCTS,clients:SEED_CLIENTS,orders:seedOrders(),audit:[],config:{cutoff:'16:00'},admin:{...SEED_ADMIN}};
+  DB={products:SEED_PRODUCTS,clients:SEED_CLIENTS,workers:SEED_WORKERS,orders:seedOrders(),purchases:[],audit:[],config:{cutoff:'16:00',remisionNext:12588},admin:{...SEED_ADMIN}};
   await saveDB();
 }
 function migrateDB(){
   if(!DB.admin) DB.admin={...SEED_ADMIN};
+  if(!DB.workers) DB.workers=SEED_WORKERS.map(w=>({...w}));
+  if(!DB.purchases) DB.purchases=[];
+  if(!DB.config.remisionNext) DB.config.remisionNext=12588;
+  DB.products.forEach(p=>delete p.unit);
   const defaults={c1:{username:'terraza',password:'terraza1'},c2:{username:'carretero',password:'carretero1'},c3:{username:'solar',password:'solar1'}};
   DB.clients.forEach(c=>{
     delete c.exception;
     if(!c.username) c.username=defaults[c.id]?.username||slugUsername(c.name);
     if(!c.password) c.password=defaults[c.id]?.password||(c.username+'1');
+  });
+  DB.orders.forEach(o=>{
+    o.description=o.description||'';
+    o.deliveryTime=o.deliveryTime||'';
+    o.shift=o.shift||orderShift(o.time);
+    o.items=(o.items||[]).map(it=>({p:it.p,q:it.q,u:it.u||'kilo',w:it.w??null,unitPrice:it.unitPrice??null,priceUnit:it.priceUnit||it.u||'kilo',total:it.total??null}));
   });
 }
 let saveT=null;
@@ -470,7 +500,7 @@ function showView(id){
 function nav(which){
   $$('[data-nav]').forEach(b=>b.classList.toggle('on',b.dataset.nav===which));
   if(which==='order'){renderClientOrder();showView('v-order');}
-  else{renderHistory();showView('v-history');}
+  else{renderClientHistory();showView('v-history');}
 }
 function logout(){session=null;cart={};resetLoginForm();showView('v-login');}
 function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('show'),2400);}
@@ -491,6 +521,10 @@ function doLogin(){
   const admin=DB.admin||SEED_ADMIN;
   if(user===admin.username.toLowerCase()&&pass===admin.password){
     session={role:'admin',name:admin.name}; adminNav('dash'); showView('v-admin'); return;
+  }
+  const worker=(DB.workers||[]).find(w=>w.username?.toLowerCase()===user&&w.password===pass);
+  if(worker){
+    session={role:'worker',id:worker.id,name:worker.name}; $('#workerSub').textContent=fmtDate(todayStr()); renderWorker(); showView('v-worker'); return;
   }
   const client=DB.clients.find(c=>c.username?.toLowerCase()===user&&c.password===pass);
   if(client){
@@ -536,7 +570,8 @@ function renderClientOrder(){
   const freq={}; DB.orders.filter(o=>o.clientId===session.id).forEach(o=>o.items.forEach(it=>freq[it.p]=1));
   const grid=$('#prodGrid'); grid.innerHTML='';
   slice.forEach((p,i)=>{
-    const q=cart[p.id]||0;
+    const citem=cart[p.id]||{q:0,u:'kilo'};
+    const q=citem.q||0;
     const el=document.createElement('div');
     el.className='pcard pop'+(q>0?' selected':'');
     el.style.setProperty('--tint',p.tint||'#E8F8EE');
@@ -544,10 +579,11 @@ function renderClientOrder(){
     el.style.animationDelay=(i*60)+'ms';
     el.innerHTML=`${page===0&&freq[p.id]?'<span class="badge-top">⭐ frecuente</span>':''}
       <div class="pimg">${p.img?`<img src="${p.img}" alt="">`:p.emoji}</div>
-      <div><div class="pname">${p.name}</div><div class="punit" style="text-align:center">${p.unit}</div></div>
+      <div><div class="pname">${p.name}</div></div>
       <div class="stepper">
+        <select class="unit-sel" onchange="setCartUnit('${p.id}',this.value)">${['kilo','gramo','unidad'].map(u=>`<option value="${u}" ${citem.u===u?'selected':''}>${u==='kilo'?'kg':u==='gramo'?'g':'und'}</option>`).join('')}</select>
         <button class="step-btn minus" onclick="stepQty('${p.id}',-1,this)">−</button>
-        <input class="qty-in" inputmode="numeric" value="${q}" onfocus="this.select()" oninput="typeQty('${p.id}',this)">
+        <input class="qty-in" inputmode="decimal" value="${q||''}" placeholder="0" onfocus="this.select()" oninput="typeQty('${p.id}',this)">
         <button class="step-btn plus" onclick="stepQty('${p.id}',1,this)">+</button>
       </div>`;
     grid.appendChild(el);
@@ -558,57 +594,60 @@ function renderClientOrder(){
   updateCartBar();
 }
 function changePage(d){page+=d;renderClientOrder();}
+function setCartUnit(pid,u){if(!cart[pid])cart[pid]={q:0,u:'kilo'};cart[pid].u=u;}
 function stepQty(pid,d,btn){
-  cart[pid]=Math.max(0,(cart[pid]||0)+d);
-  if(cart[pid]===0)delete cart[pid];
+  if(!cart[pid])cart[pid]={q:0,u:'kilo'};
+  cart[pid].q=Math.max(0,(cart[pid].q||0)+d);
+  if(cart[pid].q===0)delete cart[pid];
   const card=btn.closest('.pcard'); const inp=card.querySelector('.qty-in');
-  inp.value=cart[pid]||0; inp.classList.remove('bump'); void inp.offsetWidth; inp.classList.add('bump');
-  card.classList.toggle('selected',!!cart[pid]);
+  inp.value=cart[pid]?.q||''; inp.classList.remove('bump'); void inp.offsetWidth; inp.classList.add('bump');
+  card.classList.toggle('selected',!!cart[pid]?.q);
   updateCartBar();
 }
 function typeQty(pid,inp){
-  inp.value=inp.value.replace(/[^0-9]/g,'').slice(0,4);
-  const n=parseInt(inp.value||'0',10);
-  if(n>0)cart[pid]=n; else delete cart[pid];
+  inp.value=inp.value.replace(/[^0-9.,]/g,'').slice(0,8);
+  const n=parseFloat(inp.value.replace(',','.'))||0;
+  if(n>0){if(!cart[pid])cart[pid]={q:0,u:'kilo'};cart[pid].q=n;} else delete cart[pid];
   inp.closest('.pcard').classList.toggle('selected',n>0);
   updateCartBar();
 }
 function updateCartBar(){
-  const n=Object.keys(cart).length;
+  const n=Object.keys(cart).filter(k=>cart[k]?.q>0).length;
   $('#btnSend').disabled=n===0;
   const cc=$('#cartCount'); cc.style.display=n?'inline-block':'none'; cc.textContent=n;
 }
 function cutoffPassed(){return nowTime()>DB.config.cutoff;}
 
 function openCartReview(){
-  const rows=Object.entries(cart).map(([pid,q])=>{
+  const rows=Object.entries(cart).filter(([,v])=>v.q>0).map(([pid,v])=>{
     const p=DB.products.find(x=>x.id===pid);
-    return `<div class="rev-row"><span class="re">${p.img?`<img src="${p.img}" style="width:30px;height:30px;border-radius:8px;object-fit:cover">`:p.emoji}</span>
-      <div class="rn"><b>${p.name}</b><span>${q} ${p.unit}${q>1?'s':''}</span></div></div>`;
+    const u=v.u==='kilo'?'kg':v.u==='gramo'?'g':'und';
+    return `<div class="rev-row"><span class="re">${p.emoji||'🥬'}</span>
+      <div class="rn"><b>${p.name}</b><span>${v.q} ${u}</span></div></div>`;
   }).join('');
-  const cut=cutoffPassed()?`<div class="warn-note"><span class="wi">⏰</span>Ya pasó la hora de corte (${DB.config.cutoff}). Este pedido quedará para el siguiente día de entrega.</div>`:'';
-  openSheet('🛒 Confirma tu pedido',cut+rows,
-    [{label:'✅ Confirmar pedido',cls:'green',fn:()=>submitOrder(session.id,'app')}]);
+  const cut=cutoffPassed()?`<div class="warn-note"><span class="wi">⏰</span>Ya pasó la hora de corte (${DB.config.cutoff}). Este pedido quedará para el siguiente día.</div>`:'';
+  openSheet('🛒 Confirma tu pedido',cut+rows+`
+    <div class="field" style="margin-top:12px"><label>Hora de entrega deseada</label>
+      <input type="time" id="delTime" value="07:00"></div>
+    <div class="field"><label>Descripción (opcional)</label>
+      <input id="ordDesc" placeholder="Ej.: Pedido desayuno, pedido cena…"></div>`,
+    [{label:'✅ Confirmar pedido',cls:'green',fn:()=>submitOrder(session.id,'app',false,$('#delTime').value,$('#ordDesc').value)}]);
 }
-function submitOrder(clientId,channel,fromAdmin=false){
-  const items=Object.entries(cart).map(([p,q])=>({p,q:+q}));
+function submitOrder(clientId,channel,fromAdmin=false,deliveryTime='',description=''){
+  const items=Object.entries(cart).filter(([,v])=>v.q>0).map(([p,v])=>({p,q:+v.q,u:v.u||'kilo',w:null,unitPrice:null,priceUnit:v.u||'kilo',total:null}));
   if(!items.length)return;
-  const existing=DB.orders.find(o=>o.clientId===clientId&&o.date===todayStr()&&o.status==='pendiente');
-  if(existing&&!fromAdmin&&!cutoffPassed()){
-    existing.items=mergeItems(existing.items,items); existing.time=nowTime();
-    audit('Editó pedido',`${clientName(clientId)} · ${existing.items.length} productos`);
-  }else{
-    DB.orders.unshift({id:uid(),clientId,date:todayStr(),time:nowTime(),channel,status:'pendiente',items});
-    audit('Creó pedido',`${clientName(clientId)} · ${items.length} productos · canal ${channel}`);
-  }
+  const t=nowTime();
+  DB.orders.unshift({id:uid(),clientId,date:todayStr(),time:t,channel,status:'pendiente',
+    description:description||'',deliveryTime:deliveryTime||'',shift:orderShift(t),items});
+  audit('Creó pedido',`${clientName(clientId)} · ${items.length} productos · ${shiftLabel(orderShift(t))}`);
   saveDB(); cart={}; closeSheet();
   if(fromAdmin){toast('Pedido registrado ✅');adminNav('orders');}
   else{
-    $('#successMsg').textContent=`Registrado para entrega de hoy antes del corte de ${DB.config.cutoff}. Puedes corregirlo volviendo a pedir.`;
+    $('#successMsg').textContent=`Pedido registrado. Entrega solicitada: ${deliveryTime||'—'}. Puedes hacer otro pedido hoy si lo necesitas.`;
     launchConfetti(); showView('v-success');
   }
 }
-function mergeItems(a,b){const m={};[...a,...b].forEach(it=>m[it.p]=(m[it.p]||0)+it.q);return Object.entries(m).map(([p,q])=>({p,q}));}
+function mergeItems(a,b){const m={};[...a,...b].forEach(it=>{const k=it.p+'|'+(it.u||'kilo');if(!m[k])m[k]={...it};else m[k].q=(+m[k].q||0)+(+it.q||0);});return Object.values(m);}
 function clientName(id){const c=DB.clients.find(x=>x.id===id);return c?c.name:'—';}
 function afterSuccess(){nav('history');}
 function launchConfetti(){
@@ -619,22 +658,8 @@ function launchConfetti(){
     setTimeout(()=>c.remove(),2400);}
 }
 
-/* ---------- historial cliente ---------- */
-function renderHistory(){
-  const box=$('#histList'); box.innerHTML='';
-  const mine=DB.orders.filter(o=>o.clientId===session.id&&o.status!=='anulado');
-  if(!mine.length){box.innerHTML=`<div class="empty"><span class="ee">🧺</span><b class="display">Aún no tienes pedidos</b><span>Tu historial aparecerá aquí</span></div>`;return;}
-  const byDate={}; mine.forEach(o=>{(byDate[o.date]=byDate[o.date]||[]).push(o);});
-  Object.keys(byDate).sort().reverse().forEach((d,di)=>{
-    const day=document.createElement('div'); day.className='hist-day'; day.style.animationDelay=(di*60)+'ms';
-    day.innerHTML=`<h3>📅 ${fmtDate(d)}</h3>`;
-    byDate[d].forEach(o=>{
-      const det=o.items.map(it=>{const p=DB.products.find(x=>x.id===it.p);return p?`${p.emoji||'•'} ${p.name}: <b>${it.q} ${p.unit}${it.q>1?'s':''}</b>`:''}).join(' · ');
-      day.innerHTML+=`<div class="list-row"><span class="le">🧾</span><div class="lt"><b>${o.time} · ${o.channel==='app'?'App':o.channel==='voz'?'Voz 🎙️':o.channel==='foto'?'Foto 📸':'Manual'}</b><span>${det}</span></div><span class="chip ${o.status==='pendiente'?'pend':o.status==='consolidado'?'cons':'cerr'}">${o.status}</span></div>`;
-    });
-    box.appendChild(day);
-  });
-}
+/* ---------- historial cliente (features.js) ---------- */
+function renderHistory(){if(typeof renderClientHistory==='function')renderClientHistory();}
 
 /* ============================================================
    PEDIDO POR VOZ
@@ -705,12 +730,12 @@ function photoPicked(inp){
 async function interpretOrder(input,channel){
   openSheet(channel==='voz'?'🎙️ Interpretando tu pedido':'📸 Leyendo tu pedido',
     `<div style="text-align:center;padding:16px 0"><div class="spin"></div><b class="display">Un momentico…</b><br><span style="color:var(--ink-soft);font-weight:700">Estamos organizando tu pedido</span></div>`,[]);
-  const catalog=activeProducts().map(p=>({id:p.id,nombre:p.name,unidad:p.unit}));
-  const instr=`Eres el intérprete de pedidos de una comercializadora de frutas y verduras en Colombia.
+  const catalog=activeProducts().map(p=>({id:p.id,nombre:p.name}));
+  const instr=`Eres el intérprete de pedidos de una comercializadora de frutas y verduras en Colombia (estilo WhatsApp: "5 kilos limón", "Piña 40000" donde el número puede ser pesos COP o cantidad).
 Catálogo disponible (SOLO puedes hacer match con estos productos): ${JSON.stringify(catalog)}
-Analiza el pedido del cliente y devuelve SOLO un JSON válido, sin markdown ni texto adicional, con esta forma:
-{"items":[{"texto":"lo que entendiste literal","productId":"id del catálogo o null","cantidad":numero,"confianza":0.0-1.0}]}
-Reglas: interpreta cantidades escritas en palabras ("dos"→2); si no se indica cantidad usa 1; "confianza" refleja qué tan seguro es el match con el catálogo (nombre mal escrito o ambiguo → menor a 0.9); si un producto no existe en el catálogo, productId=null y confianza baja. No inventes productos.`;
+Analiza el pedido y devuelve SOLO JSON válido sin markdown:
+{"items":[{"texto":"literal","productId":"id o null","cantidad":numero,"unidad":"kilo|gramo|unidad","confianza":0.0-1.0}]}
+Reglas: "5 kilos"/"5 kl"→kilo; gramos→gramo; "2 unidades"/"1 rollo"→unidad; montos como "40000" sin unidad pueden ser pesos aproximados→estimar cantidad en kilo; cantidades en palabras ("dos"→2); sin cantidad usa 1.`;
   let userContent;
   if(input.imageB64){
     userContent=[
@@ -748,25 +773,26 @@ function localParse(text){
       const hit=words.filter(w=>w.length>3&&seg.includes(w)).length/words.length;
       if(hit>score){score=hit;best=p;}
     });
-    return {texto:seg,productId:best?best.id:null,cantidad:q,confianza:best?(score>=1?0.97:0.7):0.2};
+    return {texto:seg,productId:best?best.id:null,cantidad:q,unidad:seg.includes('gram')?'gramo':seg.includes('und')||seg.includes('unidad')||seg.includes('rollo')?'unidad':'kilo',confianza:best?(score>=1?0.97:0.7):0.2};
   }).filter(x=>x.texto);
 }
 function showInterpreted(items,channel){
   const anyWarn=items.some(it=>!it.productId||it.confianza<0.9);
-  const opts=activeProducts().map(p=>`<option value="${p.id}">${p.name} (${p.unit})</option>`).join('');
+  const opts=activeProducts().map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  const uopts=UNITS||[{id:'kilo',short:'kg'},{id:'gramo',short:'g'},{id:'unidad',short:'und'}];
   const rows=items.map((it,i)=>{
     const p=DB.products.find(x=>x.id===it.productId);
     const warn=!p||it.confianza<0.9;
     return `<div class="rev-row ${warn?'warn':''}">
-      <span class="re">${warn?'❓':(p.img?`<img src="${p.img}" style="width:30px;height:30px;border-radius:8px;object-fit:cover">`:p.emoji)}</span>
+      <span class="re">${warn?'❓':(p?.emoji||'🥬')}</span>
       <div class="rn">
-        ${warn?`<select onchange="fixMatch(${i},this.value)"><option value="">— Elige el producto —</option>${opts}</select>`
-              :`<b>${p.name}</b>`}
-        <span>Entendimos: “${(it.texto||'').slice(0,60)}”${warn?'':' · '+Math.round(it.confianza*100)+'% seguro'}</span>
+        ${warn?`<select onchange="fixMatch(${i},this.value)"><option value="">— Elige —</option>${opts}</select>`:`<b>${p.name}</b>`}
+        <span>“${(it.texto||'').slice(0,60)}”</span>
       </div>
-      <div class="stepper" style="gap:4px">
-        <input class="qty-in" style="width:52px" inputmode="numeric" value="${it.cantidad||1}" oninput="this.value=this.value.replace(/[^0-9]/g,'');pendingItems[${i}].cantidad=+this.value||1">
-      </div>
+      <select style="border:2px solid var(--line);border-radius:10px;padding:6px;font-weight:700" onchange="pendingItems[${i}].unidad=this.value">
+        ${uopts.map(u=>`<option value="${u.id}" ${(it.unidad||'kilo')===u.id?'selected':''}>${u.short||u.id}</option>`).join('')}
+      </select>
+      <input class="qty-in" style="width:52px" inputmode="decimal" value="${it.cantidad||1}" oninput="pendingItems[${i}].cantidad=+this.value||1">
       <button class="icon-btn" onclick="pendingItems[${i}].removed=true;this.closest('.rev-row').style.display='none'">🗑️</button>
     </div>`;
   }).join('');
@@ -785,7 +811,7 @@ function confirmInterpreted(){
   const missing=pendingItems.filter(it=>!it.removed&&!it.productId);
   if(missing.length){toast('Hay productos sin identificar: elígelos de la lista o elimínalos');return;}
   if(!good.length){toast('El pedido quedó vacío');return;}
-  cart={}; good.forEach(it=>cart[it.productId]=(cart[it.productId]||0)+it.cantidad);
+  cart={}; good.forEach(it=>cart[it.productId]={q:it.cantidad,u:it.unidad||'kilo'});
   if(session.role==='admin'){submitOrder(window.manualClientId,pendingChannel==='voz'?'voz':'foto',true);}
   else submitOrder(session.id,pendingChannel);
 }
@@ -828,58 +854,17 @@ function renderDash(){
     <h3 style="margin:16px 0 8px;font-weight:600">Últimos pedidos de hoy</h3>
     ${t.slice(0,5).map(o=>orderRowHTML(o)).join('')||'<div class="empty" style="padding:16px"><span class="ee">🌅</span><span>Aún no llegan pedidos hoy</span></div>'}`;
 }
-function orderRowHTML(o){
-  const c=DB.clients.find(x=>x.id===o.clientId)||{};
-  const det=o.items.map(it=>{const p=DB.products.find(x=>x.id===it.p);return p?`${p.name} ×${it.q}`:''}).join(', ');
-  const ch={app:'📱',voz:'🎙️',foto:'📸',manual:'✍️'}[o.channel]||'📱';
-  return `<div class="list-row">
-    <span class="le">${c.emoji||'🏪'}</span>
-    <div class="lt"><b>${c.name||'—'} <small style="font-weight:700;color:var(--ink-soft)">${ch} ${o.time}</small></b><span>${det}</span></div>
-    <span class="chip ${o.status==='pendiente'?'pend':o.status==='consolidado'?'cons':o.status==='anulado'?'anul':'cerr'}">${o.status}</span>
-    ${o.status!=='cerrado'&&o.status!=='anulado'?`<button class="icon-btn" onclick="editOrder('${o.id}')">✏️</button><button class="icon-btn" onclick="voidOrder('${o.id}')">🗑️</button>`:''}
-  </div>`;
-}
+function orderRowHTML(o){ /* overridden by features.js */ return '';}
 
-/* ---------- consolidado ---------- */
+/* renderConsol/renderOrders in features.js */
 let consolDate=todayStr();
-function renderConsol(){
-  const list=ordersOf(consolDate);
-  const sum={};
-  list.forEach(o=>o.items.forEach(it=>{
-    sum[it.p]=sum[it.p]||{q:0,clients:{}};
-    sum[it.p].q+=it.q;
-    sum[it.p].clients[o.clientId]=(sum[it.p].clients[o.clientId]||0)+it.q;
-  }));
-  const rows=Object.entries(sum).sort((a,b)=>{
-    const pa=DB.products.find(x=>x.id===a[0]),pb=DB.products.find(x=>x.id===b[0]);
-    return (pa?pa.name:'').localeCompare(pb?pb.name:'');
-  }).map(([pid,d],i)=>{
-    const p=DB.products.find(x=>x.id===pid); if(!p)return'';
-    const det=Object.entries(d.clients).map(([cid,q])=>`${clientName(cid)}: ${q}`).join(' · ');
-    return `<div class="consol-row" style="animation-delay:${i*50}ms;flex-wrap:wrap" onclick="this.classList.toggle('open')">
-      <span class="ce">${p.img?`<img src="${p.img}" style="width:34px;height:34px;border-radius:9px;object-fit:cover">`:p.emoji}</span>
-      <div class="cn"><b>${p.name}</b><span style="font-size:12px;color:var(--ink-soft);font-weight:700">Toca para ver por cliente 👇</span></div>
-      <div class="cq">${d.q}<small>${p.unit}${d.q>1?'s':''}</small></div>
-      <div class="detail-clients">👥 ${det}</div>
-    </div>`;
-  }).join('');
-  const isToday=consolDate===todayStr();
-  $('#adminBody').innerHTML=`
-    <div class="card pop" style="padding:12px;margin-bottom:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <b class="display" style="font-size:17px">🧮 Lista de compra</b><div class="spacer"></div>
-      <input type="date" value="${consolDate}" onchange="consolDate=this.value;renderConsol()" style="border:2px solid var(--line);border-radius:11px;padding:8px;font-weight:700">
-    </div>
-    ${rows||`<div class="empty"><span class="ee">🧺</span><b class="display">Sin pedidos ese día</b></div>`}
-    ${rows?`<div style="display:grid;gap:10px;grid-template-columns:1fr 1fr;margin-top:6px">
-      <button class="btn yellow" onclick="printConsol()">🖨️ Imprimir / PDF</button>
-      ${isToday?`<button class="btn green" onclick="closeDay()">🔒 Cerrar el día</button>`:''}
-    </div>`:''}`;
-}
+function renderConsol(){if(typeof window._renderConsol==='function')window._renderConsol();}
+function renderOrders(){if(typeof window._renderOrders==='function')window._renderOrders();}
 function printConsol(){
   const list=ordersOf(consolDate); const sum={};
-  list.forEach(o=>o.items.forEach(it=>{sum[it.p]=(sum[it.p]||0)+it.q;}));
+  list.forEach(o=>o.items.forEach(it=>{const k=it.p;sum[k]=(sum[k]||0)+(+it.q||0);}));
   let html=`<h1 style="font-family:sans-serif">Fruver Pedidos — Lista de compra</h1><h3 style="font-family:sans-serif">${fmtDate(consolDate)}</h3><table border="1" cellpadding="8" style="border-collapse:collapse;font-family:sans-serif;width:100%"><tr><th align="left">Producto</th><th align="left">Cantidad</th></tr>`;
-  Object.entries(sum).forEach(([pid,q])=>{const p=DB.products.find(x=>x.id===pid);if(p)html+=`<tr><td>${p.name}</td><td><b>${q}</b> ${p.unit}${q>1?'s':''}</td></tr>`;});
+  Object.entries(sum).forEach(([pid,q])=>{const p=DB.products.find(x=>x.id===pid);if(p)html+=`<tr><td>${p.name}</td><td><b>${q.q||q}</b></td></tr>`;});
   html+='</table>';
   $('#printArea').innerHTML=html; $('#printArea').style.display='block';
   audit('Exportó consolidado',fmtDate(consolDate));
@@ -891,18 +876,8 @@ function closeDay(){
   audit('Cierre del día','Pedidos consolidados/cerrados'); saveDB(); toast('Día actualizado: pendientes → consolidados → cerrados'); renderConsol();
 }
 
-/* ---------- pedidos ---------- */
+/* pedidos admin in features.js */
 let ordersDate=todayStr();
-function renderOrders(){
-  const list=DB.orders.filter(o=>o.date===ordersDate);
-  $('#adminBody').innerHTML=`
-    <div class="card pop" style="padding:12px;margin-bottom:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <b class="display" style="font-size:17px">📦 Pedidos del día</b><div class="spacer"></div>
-      <input type="date" value="${ordersDate}" onchange="ordersDate=this.value;renderOrders()" style="border:2px solid var(--line);border-radius:11px;padding:8px;font-weight:700">
-    </div>
-    <button class="btn orange block" style="margin-bottom:10px" onclick="openManualOrder()">✍️ Registrar pedido manual (Excel, foto, OC, teléfono)</button>
-    ${list.map(o=>orderRowHTML(o)).join('')||`<div class="empty"><span class="ee">📭</span><b class="display">Sin pedidos ese día</b></div>`}`;
-}
 function voidOrder(id){
   const o=DB.orders.find(x=>x.id===id);
   openSheet('🗑️ Anular pedido',`<p style="font-weight:700">¿Anular el pedido de <b>${clientName(o.clientId)}</b> (${o.time})? Quedará registro en la auditoría.</p>`,
@@ -935,6 +910,8 @@ function openManualOrder(){
   const opts=DB.clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
   openSheet('✍️ Pedido manual',`
     <div class="field"><label>Cliente</label><select id="manCli">${opts}</select></div>
+    <div class="field"><label>Hora entrega</label><input type="time" id="manDel" value="07:00"></div>
+    <div class="field"><label>Descripción</label><input id="manDesc" placeholder="Opcional"></div>
     <p style="font-size:13px;font-weight:700;color:var(--ink-soft);margin-bottom:10px">Para pedidos que llegan por Excel, foto, audio, orden de compra o teléfono. También puedes usar 🎙️ voz o 📸 foto para digitarlo más rápido.</p>
     <div class="mode-row">
       <button class="mode-btn voice" onclick="window.manualClientId=$('#manCli').value;openVoice()"><span class="ic">🎙️</span><span>Dictar<br><b>pedido</b></span></button>
@@ -943,17 +920,19 @@ function openManualOrder(){
     <div id="manRows"></div>
     <button class="btn ghost sm block" onclick="manAddRow()">➕ Agregar producto</button>`,
     [{label:'💾 Registrar pedido',cls:'green',fn:()=>{
-      const items=[...$$('#manRows .rev-row')].map(r=>({p:r.querySelector('select').value,q:+r.querySelector('.qty-in').value||0})).filter(x=>x.q>0);
+      const items=[...$$('#manRows .rev-row')].map(r=>({p:r.querySelector('select[data-p]').value,q:+r.querySelector('.qty-in').value||0,u:r.querySelector('select[data-u]').value})).filter(x=>x.q>0);
       if(!items.length){toast('Agrega al menos un producto');return;}
-      cart={}; items.forEach(it=>cart[it.p]=(cart[it.p]||0)+it.q);
-      submitOrder($('#manCli').value,'manual',true);
+      cart={}; items.forEach(it=>cart[it.p]={q:it.q,u:it.u||'kilo'});
+      const descEl=document.getElementById('manDesc');
+      submitOrder($('#manCli').value,'manual',true,$('#manDel')?.value||'',descEl?descEl.value:'');
     }}]);
   manAddRow();
 }
 function manAddRow(){
-  const opts=activeProducts().map(p=>`<option value="${p.id}">${p.name} (${p.unit})</option>`).join('');
+  const opts=activeProducts().map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  const uopts=['kilo','gramo','unidad'].map(u=>`<option value="${u}">${u==='kilo'?'kg':u==='gramo'?'g':'und'}</option>`).join('');
   const div=document.createElement('div'); div.className='rev-row';
-  div.innerHTML=`<select style="flex:1">${opts}</select><input class="qty-in" style="width:56px" inputmode="numeric" value="1" oninput="this.value=this.value.replace(/[^0-9]/g,'')"><button class="icon-btn" onclick="this.closest('.rev-row').remove()">🗑️</button>`;
+  div.innerHTML=`<select data-p style="flex:1">${opts}</select><select data-u style="width:60px;border:2px solid var(--line);border-radius:10px;font-weight:700">${uopts}</select><input class="qty-in" style="width:56px" inputmode="decimal" value="1"><button class="icon-btn" onclick="this.closest('.rev-row').remove()">🗑️</button>`;
   $('#manRows').appendChild(div);
 }
 
@@ -969,7 +948,7 @@ function catListHTML(q){
   return DB.products.filter(p=>norm(p.name).includes(norm(q))).map((p,i)=>`
     <div class="list-row" style="animation-delay:${i*40}ms;${p.active?'':'opacity:.5'}">
       <span class="le">${p.img?`<img src="${p.img}" style="width:34px;height:34px;border-radius:9px;object-fit:cover">`:p.emoji}</span>
-      <div class="lt"><b>${p.name}</b><span>Unidad: ${p.unit}${p.active?'':' · desactivado'}</span></div>
+      <div class="lt"><b>${p.name}</b><span>${p.active?'':'desactivado'}</span></div>
       <button class="icon-btn" onclick="openProductForm('${p.id}')">✏️</button>
       <button class="icon-btn" onclick="toggleProduct('${p.id}')">${p.active?'🚫':'✅'}</button>
     </div>`).join('')||'<div class="empty" style="padding:16px"><span class="ee">🔍</span><span>Sin resultados</span></div>';
@@ -981,13 +960,11 @@ function toggleProduct(id){
 }
 const EMOJIS=['🥔','🧅','🍅','🥕','🍌','🍋','🥑','🌿','🫑','🥬','🍎','🍊','🍓','🍇','🍍','🥭','🍐','🥒','🌽','🥦','🍠','🫘','🍆','🧄'];
 function openProductForm(id){
-  const p=id?DB.products.find(x=>x.id===id):{name:'',unit:'kilo',emoji:'🍎',img:null};
+  const p=id?DB.products.find(x=>x.id===id):{name:'',emoji:'🍎',img:null};
   window.formImg=p.img||null; window.formEmoji=p.emoji||'🍎';
   const em=EMOJIS.map(e=>`<button type="button" class="${e===window.formEmoji?'on':''}" onclick="pickEmoji(this,'${e}')">${e}</button>`).join('');
   openSheet(id?'✏️ Editar producto':'➕ Nuevo producto',`
     <div class="field"><label>Nombre</label><input id="pfName" value="${p.name}" placeholder="Ej.: Papa criolla"></div>
-    <div class="field"><label>Unidad de medida</label>
-      <select id="pfUnit">${['kilo','bulto','canastilla','unidad','rollo','libra','atado'].map(u=>`<option ${u===p.unit?'selected':''}>${u}</option>`).join('')}</select></div>
     <div class="field"><label>Imagen del producto</label>
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
         <div id="pfPrev" style="width:56px;height:56px;border:2px solid var(--line);border-radius:14px;display:grid;place-items:center;font-size:30px;overflow:hidden">${p.img?`<img src="${p.img}" style="width:100%;height:100%;object-fit:cover">`:window.formEmoji}</div>
@@ -999,12 +976,12 @@ function openProductForm(id){
       <p style="font-size:12px;color:var(--ink-soft);font-weight:700;margin-top:6px">💡 En esta demo la “imagen IA” se representa con el ícono sugerido; la generación real de PNG sin fondo se conecta en la fase de backend.</p>
     </div>`,
     [{label:'💾 Guardar',cls:'green',fn:()=>{
-      const name=$('#pfName').value.trim(), unit=$('#pfUnit').value;
+      const name=$('#pfName').value.trim();
       if(!name){toast('Escribe el nombre del producto');return;}
-      const dup=DB.products.find(x=>x.name.toLowerCase()===name.toLowerCase()&&x.unit===unit&&x.id!==id);
-      if(dup){toast('Ya existe "'+name+'" con unidad "'+unit+'" (no se permiten duplicados)');return;}
-      if(id){Object.assign(p,{name,unit,emoji:window.formEmoji,img:window.formImg});audit('Editó producto',name);}
-      else{DB.products.push({id:uid(),name,unit,emoji:window.formEmoji,img:window.formImg,tint:'#E8F8EE',edge:'#1FA84D',active:true});audit('Creó producto',name);}
+      const dup=DB.products.find(x=>x.name.toLowerCase()===name.toLowerCase()&&x.id!==id);
+      if(dup){toast('Ya existe "'+name+'"');return;}
+      if(id){Object.assign(p,{name,emoji:window.formEmoji,img:window.formImg});audit('Editó producto',name);}
+      else{DB.products.push({id:uid(),name,emoji:window.formEmoji,img:window.formImg,tint:'#E8F8EE',edge:'#1FA84D',active:true});audit('Creó producto',name);}
       saveDB(); closeSheet(); renderCatalog(); toast('Producto guardado ✅');
     }}]);
 }
@@ -1040,7 +1017,7 @@ function renderClients(){
         <span class="le">${c.emoji||'🏪'}</span>
         <div class="lt"><b>${c.name}</b>
         <span>${c.type} · 👤 ${c.username||'—'} · 📱 ${c.phone} · 📍 ${c.address||'—'}</span></div>
-        <button class="icon-btn" onclick="clientHistory('${c.id}')">📋</button>
+        <button class="icon-btn" onclick="clientHistoryAdmin('${c.id}')">📋</button>
         <button class="icon-btn" onclick="openClientForm('${c.id}')">✏️</button>
       </div>`).join('')}`;
 }
@@ -1078,31 +1055,6 @@ function openClientForm(id){
       saveDB(); closeSheet(); renderClients(); toast('Cliente guardado ✅');
     }}]);
 }
-let histRange='semana';
-function clientHistory(cid){
-  const c=DB.clients.find(x=>x.id===cid);
-  const draw=()=>{
-    const days=histRange==='semana'?7:30;
-    const from=new Date(); from.setDate(from.getDate()-days);
-    const mine=DB.orders.filter(o=>o.clientId===cid&&o.status!=='anulado'&&new Date(o.date)>=from);
-    const freq={}; mine.forEach(o=>o.items.forEach(it=>freq[it.p]=(freq[it.p]||0)+it.q));
-    const top=Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,3)
-      .map(([pid,q])=>{const p=DB.products.find(x=>x.id===pid);return p?`${p.emoji||''} ${p.name} (${q} ${p.unit}s)`:''}).join(' · ');
-    $('#chBody').innerHTML=`
-      ${top?`<div class="hints" style="margin-bottom:10px">🏆 <b>Lo que más pide:</b> ${top}</div>`:''}
-      ${mine.map(o=>{
-        const det=o.items.map(it=>{const p=DB.products.find(x=>x.id===it.p);return p?`${p.name} ×${it.q}`:''}).join(', ');
-        return `<div class="list-row"><span class="le">🧾</span><div class="lt"><b>${fmtDate(o.date)} · ${o.time}</b><span>${det}</span></div></div>`;
-      }).join('')||'<div class="empty" style="padding:14px"><span class="ee">🧺</span><span>Sin pedidos en este periodo</span></div>'}`;
-    $$('#chSeg button').forEach(b=>b.classList.toggle('on',b.dataset.r===histRange));
-  };
-  openSheet('📋 Historial — '+c.name,`
-    <div class="seg" id="chSeg">
-      <button data-r="semana" class="on" onclick="histRange='semana';window._chDraw()">Última semana</button>
-      <button data-r="mes" onclick="histRange='mes';window._chDraw()">Último mes</button>
-    </div><div id="chBody"></div>`,[]);
-  window._chDraw=draw; draw();
-}
 
 /* ---------- más: config + auditoría ---------- */
 function renderMore(){
@@ -1114,6 +1066,11 @@ function renderMore(){
         <input type="time" id="cutIn" value="${DB.config.cutoff}" style="flex:1;border:2px solid var(--line);border-radius:12px;padding:10px;font-weight:800;font-size:18px">
         <button class="btn green" onclick="DB.config.cutoff=$('#cutIn').value;audit('Cambió hora de corte',DB.config.cutoff);saveDB();toast('Hora de corte: '+DB.config.cutoff)">Guardar</button>
       </div>
+    </div>
+    <div class="card pop" style="padding:14px;margin-bottom:12px;animation-delay:.04s">
+      <b class="display">👷 Operarios</b>
+      <p style="font-size:13px;color:var(--ink-soft);font-weight:700;margin:4px 0 8px">Los operarios pesan pedidos; solo la administradora define precios.</p>
+      ${(DB.workers||[]).map(w=>`<div class="list-row"><span class="le">⚖️</span><div class="lt"><b>${w.name}</b><span>👤 ${w.username}</span></div></div>`).join('')||'<span style="color:var(--ink-soft);font-weight:700">Sin operarios</span>'}
     </div>
     <div class="card pop" style="padding:14px;animation-delay:.08s">
       <b class="display">🕵️ Auditoría</b>
@@ -1136,7 +1093,12 @@ function renderMore(){
 })();
 window.addEventListener('resize',()=>{if(session&&session.role==='client'&&$('#v-order').classList.contains('active'))renderClientOrder();});
 
-/* ---------- arranque ---------- */
+/* ---------- arranque (init al final, tras features.js) ---------- */
+</script>
+<script src="features.js"></script>
+<script>
+window._renderConsol=renderConsol;
+window._renderOrders=renderOrders;
 (async function init(){
   await loadDB();
   migrateDB();
