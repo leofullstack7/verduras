@@ -677,9 +677,9 @@ function openCartReview(){
       <input type="time" id="delTime" value="07:00"></div>
     <div class="field"><label>Descripción (opcional)</label>
       <input id="ordDesc" placeholder="Ej.: Pedido desayuno, pedido cena…"></div>`,
-    [{label:'✅ Confirmar pedido',cls:'green',fn:()=>submitOrder(session.id,'app',false,$('#delTime').value,$('#ordDesc').value)}]);
+    [{label:'✅ Confirmar pedido',cls:'green',fn:()=>void submitOrder(session.id,'app',false,$('#delTime').value,$('#ordDesc').value)}]);
 }
-function submitOrder(clientId,channel,fromAdmin=false,deliveryTime='',description=''){
+async function submitOrder(clientId,channel,fromAdmin=false,deliveryTime='',description=''){
   const items=Object.entries(cart).filter(([,v])=>v.q>0).map(([p,v])=>({p,q:+v.q,u:v.u||'kilo',w:null,unitPrice:null,priceUnit:v.u||'kilo',total:null}));
   if(!items.length)return;
   const t=nowTime();
@@ -1144,8 +1144,8 @@ window.addEventListener('resize',()=>{if(session&&session.role==='client'&&$('#v
 </script>
 <script src="features.js"></script>
 <script>
-window._renderConsol=renderConsol;
-window._renderOrders=renderOrders;
+if(typeof renderConsol==='function') window._renderConsol=renderConsol;
+if(typeof renderOrders==='function') window._renderOrders=renderOrders;
 (async function init(){
   await loadDB();
   migrateDB();

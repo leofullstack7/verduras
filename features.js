@@ -219,9 +219,10 @@ function mergeAndPrint(clientId,orderIds){
   if(!orders.length){toast('Selecciona al menos un pedido');return;}
   const no=nextRemisionNo();
   orders.forEach(o=>{if(!o.remisionNo)o.remisionNo=no;});
-  await flushSave();
-  printRemision(orders,'Resumen de '+orders.length+' pedido(s)');
-  audit('Generó resumen PDF','Remisión '+no+' · '+clientName(clientId));
+  flushSave().then(()=>{
+    printRemision(orders,'Resumen de '+orders.length+' pedido(s)');
+    audit('Generó resumen PDF','Remisión '+no+' · '+clientName(clientId));
+  });
 }
 
 /* ---------- compras / consolidado por turno ---------- */
