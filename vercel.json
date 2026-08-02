@@ -1,4 +1,4 @@
 {
-  "buildCommand": "node scripts/generate-config.js",
+  "buildCommand": "node scripts/generate-config.js && npm install",
   "outputDirectory": "."
 }

@@ -449,16 +449,70 @@ function seedOrders(){
   return out;
 }
 
-/* ---------- base de datos (window.storage con respaldo en memoria) ---------- */
-let DB=null, memOnly=false;
-async function loadDB(){
-  try{
-    const r=await window.storage.get('fruver-db');
-    if(r&&r.value){DB=JSON.parse(r.value);migrateDB();return;}
-  }catch(e){/* clave no existe aún */}
-  DB={products:SEED_PRODUCTS,clients:SEED_CLIENTS,workers:SEED_WORKERS,orders:seedOrders(),purchases:[],audit:[],config:{cutoff:'16:00',remisionNext:12588},admin:{...SEED_ADMIN}};
-  await saveDB();
+/* ---------- base de datos (API Neon Postgres en producción) ---------- */
+let DB=null, dbUpdatedAt=null, syncTimer=null, saveT=null, saving=false;
+const API_DB='/api/db';
+
+function defaultDB(){
+  return {products:SEED_PRODUCTS,clients:SEED_CLIENTS,workers:SEED_WORKERS,orders:seedOrders(),purchases:[],audit:[],config:{cutoff:'16:00',remisionNext:12588},admin:{...SEED_ADMIN}};
 }
+
+async function loadDB(force=false){
+  try{
+    const res=await fetch(API_DB,{cache:'no-store'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const {data,updatedAt}=await res.json();
+    if(data){
+      const serverTs=updatedAt?String(updatedAt):null;
+      if(!force&&dbUpdatedAt&&serverTs===dbUpdatedAt) return false;
+      DB=data; dbUpdatedAt=serverTs; migrateDB(); return true;
+    }
+    DB=defaultDB(); migrateDB(); await flushSave(); return true;
+  }catch(e){
+    console.error('loadDB',e);
+    if(!DB){DB=defaultDB();migrateDB();}
+    return false;
+  }
+}
+
+async function flushSave(){
+  clearTimeout(saveT);
+  if(!DB||saving) return;
+  saving=true;
+  try{
+    const res=await fetch(API_DB,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(DB)});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const j=await res.json();
+    if(j.updatedAt) dbUpdatedAt=String(j.updatedAt);
+  }catch(e){
+    console.error('saveDB',e);
+    toast('Error al guardar en el servidor');
+  }finally{saving=false;}
+}
+
+function saveDB(){
+  clearTimeout(saveT);
+  saveT=setTimeout(flushSave,350);
+}
+
+function refreshCurrentView(){
+  if(!session) return;
+  if(session.role==='admin') adminNav(adminTab);
+  else if(session.role==='worker') renderWorker();
+  else if(session.role==='client'){
+    if($('#v-order')?.classList.contains('active')) renderClientOrder();
+    if($('#v-history')?.classList.contains('active')) renderHistory();
+  }
+}
+
+function startSync(){
+  stopSync();
+  syncTimer=setInterval(async()=>{
+    const changed=await loadDB();
+    if(changed) refreshCurrentView();
+  },4000);
+}
+function stopSync(){if(syncTimer){clearInterval(syncTimer);syncTimer=null;}}
 function migrateDB(){
   if(!DB.admin) DB.admin={...SEED_ADMIN};
   if(!DB.workers) DB.workers=SEED_WORKERS.map(w=>({...w}));
@@ -478,14 +532,6 @@ function migrateDB(){
     o.items=(o.items||[]).map(it=>({p:it.p,q:it.q,u:it.u||'kilo',w:it.w??null,unitPrice:it.unitPrice??null,priceUnit:it.priceUnit||it.u||'kilo',total:it.total??null}));
   });
 }
-let saveT=null;
-async function saveDB(){
-  clearTimeout(saveT);
-  saveT=setTimeout(async()=>{
-    try{await window.storage.set('fruver-db',JSON.stringify(DB));}
-    catch(e){memOnly=true;}
-  },250);
-}
 function audit(action,detail){
   DB.audit.unshift({at:new Date().toISOString(),user:session?session.name:'—',action,detail});
   DB.audit=DB.audit.slice(0,300); saveDB();
@@ -502,7 +548,7 @@ function nav(which){
   if(which==='order'){renderClientOrder();showView('v-order');}
   else{renderClientHistory();showView('v-history');}
 }
-function logout(){session=null;cart={};resetLoginForm();showView('v-login');}
+function logout(){stopSync();session=null;cart={};resetLoginForm();showView('v-login');}
 function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('show'),2400);}
 
 /* ---------- login ---------- */
@@ -520,15 +566,15 @@ function doLogin(){
   if(!user||!pass){toast('Ingresa usuario y contraseña');return;}
   const admin=DB.admin||SEED_ADMIN;
   if(user===admin.username.toLowerCase()&&pass===admin.password){
-    session={role:'admin',name:admin.name}; adminNav('dash'); showView('v-admin'); return;
+    session={role:'admin',name:admin.name}; startSync(); adminNav('dash'); showView('v-admin'); return;
   }
   const worker=(DB.workers||[]).find(w=>w.username?.toLowerCase()===user&&w.password===pass);
   if(worker){
-    session={role:'worker',id:worker.id,name:worker.name}; $('#workerSub').textContent=fmtDate(todayStr()); renderWorker(); showView('v-worker'); return;
+    session={role:'worker',id:worker.id,name:worker.name}; startSync(); $('#workerSub').textContent=fmtDate(todayStr()); renderWorker(); showView('v-worker'); return;
   }
   const client=DB.clients.find(c=>c.username?.toLowerCase()===user&&c.password===pass);
   if(client){
-    session={role:'client',id:client.id,name:client.name}; cart={}; page=0; nav('order'); return;
+    session={role:'client',id:client.id,name:client.name}; startSync(); cart={}; page=0; nav('order'); return;
   }
   $('#loginPass').value='';
   $('#loginPass').closest('.field').classList.add('wiggle');
@@ -640,7 +686,8 @@ function submitOrder(clientId,channel,fromAdmin=false,deliveryTime='',descriptio
   DB.orders.unshift({id:uid(),clientId,date:todayStr(),time:t,channel,status:'pendiente',
     description:description||'',deliveryTime:deliveryTime||'',shift:orderShift(t),items});
   audit('Creó pedido',`${clientName(clientId)} · ${items.length} productos · ${shiftLabel(orderShift(t))}`);
-  saveDB(); cart={}; closeSheet();
+  cart={}; closeSheet();
+  await flushSave();
   if(fromAdmin){toast('Pedido registrado ✅');adminNav('orders');}
   else{
     $('#successMsg').textContent=`Pedido registrado. Entrega solicitada: ${deliveryTime||'—'}. Puedes hacer otro pedido hoy si lo necesitas.`;

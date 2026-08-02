@@ -96,13 +96,13 @@ function openWeighOrder(id){
       </select></div>`;
   }).join('');
   openSheet('⚖️ Pesar pedido — '+clientName(o.clientId),rows,
-    [{label:'💾 Guardar pesos',cls:'green',fn:()=>{
+    [{label:'💾 Guardar pesos',cls:'green',fn:async()=>{
       o.items.forEach((it,i)=>{
         const w=parseFloat($('#w_'+i).value);
         if(!isNaN(w)&&w>0){it.w=w;it.wUnit=$('#wu_'+i).value;}
       });
       o.status='pesado'; o.weighedBy=session.name; o.weighedAt=new Date().toISOString();
-      audit('Pesó pedido',clientName(o.clientId)+' · '+o.date); saveDB(); closeSheet(); renderWorker(); toast('Pesos guardados ✅');
+      audit('Pesó pedido',clientName(o.clientId)+' · '+o.date); await flushSave(); closeSheet(); renderWorker(); toast('Pesos guardados ✅');
     }}]);
 }
 
@@ -130,7 +130,7 @@ function openOrderDetail(id){
     </div>`;
   }).join('');
   const btns=[];
-  if(canPrice) btns.push({label:'💲 Guardar precios y facturar',cls:'green',fn:()=>{
+  if(canPrice) btns.push({label:'💲 Guardar precios y facturar',cls:'green',fn:async()=>{
     o.items.forEach((it,i)=>{
       const up=parseFloat($('#pu_'+i).value);
       if(!isNaN(up)&&up>=0){
@@ -141,7 +141,7 @@ function openOrderDetail(id){
     });
     o.remisionNo=nextRemisionNo();
     o.status='facturado'; o.pricedBy=session.name; o.pricedAt=new Date().toISOString();
-    audit('Facturó pedido','Remisión '+o.remisionNo+' · '+c.name); saveDB(); closeSheet(); adminNav(adminTab); toast('Remisión #'+o.remisionNo+' generada');
+    audit('Facturó pedido','Remisión '+o.remisionNo+' · '+c.name); await flushSave(); closeSheet(); adminNav(adminTab); toast('Remisión #'+o.remisionNo+' generada');
   }});
   if(canRemision||o.remisionNo) btns.push({label:'📄 PDF remisión',cls:'yellow',fn:()=>{closeSheet();printRemision([o]);}});
   if(isAdmin&&o.status!=='anulado') btns.push({label:'🗑️ Anular',cls:'orange',fn:()=>voidOrder(o.id)});
@@ -219,7 +219,7 @@ function mergeAndPrint(clientId,orderIds){
   if(!orders.length){toast('Selecciona al menos un pedido');return;}
   const no=nextRemisionNo();
   orders.forEach(o=>{if(!o.remisionNo)o.remisionNo=no;});
-  saveDB();
+  await flushSave();
   printRemision(orders,'Resumen de '+orders.length+' pedido(s)');
   audit('Generó resumen PDF','Remisión '+no+' · '+clientName(clientId));
 }
