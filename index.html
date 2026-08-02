@@ -362,6 +362,7 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
       <button class="nav-btn" data-anav="orders" onclick="adminNav('orders')"><span class="ni">📦</span>Pedidos</button>
       <button class="nav-btn" data-anav="catalog" onclick="adminNav('catalog')"><span class="ni">🥬</span>Catálogo</button>
       <button class="nav-btn" data-anav="clients" onclick="adminNav('clients')"><span class="ni">👥</span>Clientes</button>
+      <button class="nav-btn" data-anav="workers" onclick="adminNav('workers')"><span class="ni">⚖️</span>Operarios</button>
       <button class="nav-btn" data-anav="more" onclick="adminNav('more')"><span class="ni">⚙️</span>Más</button>
     </nav>
   </section>
@@ -555,6 +556,15 @@ function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show'
 function slugUsername(name){
   return name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
     .replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,24)||'cliente';
+}
+function usernameTaken(username,opts={}){
+  const u=username.toLowerCase();
+  if((DB.admin||SEED_ADMIN).username?.toLowerCase()===u) return 'administradora';
+  const cw=DB.workers?.find(w=>w.username?.toLowerCase()===u&&w.id!==opts.workerId);
+  if(cw) return 'operario '+cw.name;
+  const cc=DB.clients?.find(c=>c.username?.toLowerCase()===u&&c.id!==opts.clientId);
+  if(cc) return 'cliente '+cc.name;
+  return null;
 }
 function resetLoginForm(){
   const u=$('#loginUser'),p=$('#loginPass');
@@ -870,7 +880,7 @@ let adminTab='dash';
 function adminNav(tab){
   adminTab=tab;
   $$('[data-anav]').forEach(b=>b.classList.toggle('on',b.dataset.anav===tab));
-  const r={dash:renderDash,consol:renderConsol,orders:renderOrders,catalog:renderCatalog,clients:renderClients,more:renderMore}[tab];
+  const r={dash:renderDash,consol:renderConsol,orders:renderOrders,catalog:renderCatalog,clients:renderClients,workers:renderWorkers,more:renderMore}[tab];
   $('#adminSub').textContent=fmtDate(todayStr());
   r();
 }
@@ -1082,10 +1092,8 @@ function openClientForm(id){
       const name=$('#cfName').value.trim(); if(!name){toast('Escribe el nombre');return;}
       const username=$('#cfUser').value.trim().toLowerCase();
       if(!username){toast('Escribe un usuario de acceso');return;}
-      const dupUser=DB.clients.find(x=>x.username?.toLowerCase()===username&&x.id!==id);
-      if(dupUser){toast('Ese usuario ya está en uso por '+dupUser.name);return;}
-      const adminUser=(DB.admin||SEED_ADMIN).username?.toLowerCase();
-      if(username===adminUser){toast('Ese usuario está reservado para la administradora');return;}
+      const taken=usernameTaken(username,{clientId:id});
+      if(taken){toast('Ese usuario ya está en uso por '+taken);return;}
       const newPass=$('#cfPass').value;
       if(!id&&!newPass){toast('Define una contraseña para el nuevo cliente');return;}
       const data={name,type:$('#cfType').value,phone:$('#cfPhone').value,address:$('#cfAddr').value,username};
@@ -1093,13 +1101,58 @@ function openClientForm(id){
       else if(!id) data.password=username+'1';
       if(id){
         Object.assign(c,data);
-        if(newPass) audit('Cambió contraseña',name);
+        if(newPass) audit('Cambió contraseña cliente',name);
         else audit('Editó cliente',name);
       }else{
         DB.clients.push({id:uid(),emoji:{hotel:'🏨',restaurante:'🍽️',gastrobar:'🍸',otro:'🏪'}[data.type],password:data.password,...data});
         audit('Creó cliente',name+' · usuario '+username);
       }
-      saveDB(); closeSheet(); renderClients(); toast('Cliente guardado ✅');
+      closeSheet(); renderClients();
+      flushSave().then(()=>toast('Cliente guardado ✅'));
+    }}]);
+}
+
+/* ---------- operarios (admin) ---------- */
+function renderWorkers(){
+  if(!DB.workers) DB.workers=[];
+  $('#adminBody').innerHTML=`
+    <button class="btn green block pop" style="margin-bottom:10px" onclick="openWorkerForm()">➕ Nuevo operario</button>
+    <p style="font-size:13px;color:var(--ink-soft);font-weight:700;margin-bottom:10px">Los operarios registran pesos reales. Solo la administradora define precios.</p>
+    ${DB.workers.map((w,i)=>`
+      <div class="list-row pop" style="animation-delay:${i*40}ms">
+        <span class="le">⚖️</span>
+        <div class="lt"><b>${w.name}</b><span>👤 ${w.username||'—'}</span></div>
+        <button class="icon-btn" onclick="openWorkerForm('${w.id}')" title="Editar">✏️</button>
+      </div>`).join('')||'<div class="empty" style="padding:16px"><span class="ee">👷</span><b class="display">Sin operarios</b><span>Agrega el primero con el botón de arriba</span></div>'}`;
+}
+function openWorkerForm(id){
+  const w=id?DB.workers.find(x=>x.id===id):{name:'',username:'',password:''};
+  const defaultUser=w.username||(!id&&w.name?slugUsername(w.name):'');
+  openSheet(id?'✏️ Editar operario':'➕ Nuevo operario',`
+    <div class="field"><label>Nombre</label><input id="wfName" value="${w.name}" placeholder="Ej.: Carlos" oninput="if(!${id?'true':'false'}&&!$('#wfUser').dataset.touched){$('#wfUser').value=slugUsername(this.value)}"></div>
+    <div class="field"><label>Usuario de acceso</label><input id="wfUser" value="${defaultUser}" placeholder="Ej.: carlos" oninput="this.dataset.touched='1'"></div>
+    <div class="field"><label>Contraseña</label><input id="wfPass" type="password" value="" placeholder="${id?'Dejar vacío para no cambiar':'Contraseña inicial'}"></div>`,
+    [{label:'💾 Guardar',cls:'green',fn:()=>{
+      const name=$('#wfName').value.trim();
+      if(!name){toast('Escribe el nombre');return;}
+      const username=$('#wfUser').value.trim().toLowerCase();
+      if(!username){toast('Escribe un usuario de acceso');return;}
+      const taken=usernameTaken(username,{workerId:id});
+      if(taken){toast('Ese usuario ya está en uso por '+taken);return;}
+      const newPass=$('#wfPass').value;
+      if(!id&&!newPass){toast('Define una contraseña para el nuevo operario');return;}
+      const data={name,username};
+      if(newPass) data.password=newPass;
+      else if(!id) data.password=username+'1';
+      if(id){
+        Object.assign(w,data);
+        audit(newPass?'Cambió contraseña operario':'Editó operario',name);
+      }else{
+        DB.workers.push({id:uid(),password:data.password,...data});
+        audit('Creó operario',name+' · usuario '+username);
+      }
+      closeSheet(); renderWorkers();
+      flushSave().then(()=>toast('Operario guardado ✅'));
     }}]);
 }
 
@@ -1113,11 +1166,6 @@ function renderMore(){
         <input type="time" id="cutIn" value="${DB.config.cutoff}" style="flex:1;border:2px solid var(--line);border-radius:12px;padding:10px;font-weight:800;font-size:18px">
         <button class="btn green" onclick="DB.config.cutoff=$('#cutIn').value;audit('Cambió hora de corte',DB.config.cutoff);saveDB();toast('Hora de corte: '+DB.config.cutoff)">Guardar</button>
       </div>
-    </div>
-    <div class="card pop" style="padding:14px;margin-bottom:12px;animation-delay:.04s">
-      <b class="display">👷 Operarios</b>
-      <p style="font-size:13px;color:var(--ink-soft);font-weight:700;margin:4px 0 8px">Los operarios pesan pedidos; solo la administradora define precios.</p>
-      ${(DB.workers||[]).map(w=>`<div class="list-row"><span class="le">⚖️</span><div class="lt"><b>${w.name}</b><span>👤 ${w.username}</span></div></div>`).join('')||'<span style="color:var(--ink-soft);font-weight:700">Sin operarios</span>'}
     </div>
     <div class="card pop" style="padding:14px;animation-delay:.08s">
       <b class="display">🕵️ Auditoría</b>
