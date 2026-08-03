@@ -1,8 +1,7 @@
 /* ============================================================
    FRUVER PEDIDOS — extensiones: remisiones, operarios, compras
    ============================================================ */
-const UNITS=[{id:'kilo',label:'Kilo',short:'kg'},{id:'gramo',label:'Gramo',short:'g'},{id:'unidad',label:'Unidad',short:'und'}];
-const fmtUnit=u=>({kilo:'kg',gramo:'g',unidad:'und'}[u]||u);
+/* UNITS + fmtUnit → units.js */
 const COMPANY={name:'DISTRIBUIDORA L y O',owner:'Olga Patricia Ocampo C.',cc:'30.394.171',address:'Cra 16 Nº 22-48 - Plaza de Mercado',phone:'310 376 56 74',city:'Manizales'};
 const ORDER_GUIDE=`
 <div class="hints" style="margin-bottom:12px;text-align:left">
@@ -19,7 +18,7 @@ const ORDER_GUIDE=`
 function orderShift(time){
   const [h,m]=(time||'12:00').split(':').map(Number);
   const mins=h*60+(m||0);
-  return (mins>=840&&mins<=1439)?'madrugada':'manana';
+  return mins>=840?'madrugada':'manana';
 }
 function shiftLabel(s){return s==='madrugada'?'🌙 Compra madrugada (3–6 am)':'☀️ Turno mañana';}
 function fmtMoney(n){return n==null||isNaN(n)?'—':Number(n).toLocaleString('es-CO');}
@@ -31,8 +30,15 @@ function normItem(it){
   if(typeof it.q==='number'&&!it.u) it.u='kilo';
   if(it.w==null) it.w=null;
   if(it.unitPrice==null) it.unitPrice=null;
-  if(it.priceUnit==null) it.priceUnit=it.u||'kilo';
+  if(it.priceUnit==null) it.priceUnit=it.u==='valor'?'kilo':(it.u||'kilo');
   if(it.total==null) it.total=null;
+  if(it.notaAdmin==null) it.notaAdmin=it.nota_admin||'';
+  if(it.nombreLibre==null) it.nombreLibre='';
+  if(it.variacion==null) it.variacion='';
+  if(it.u==='valor'&&it.valorPedido==null) it.valorPedido=+it.q||0;
+  if(it.u==='valor'&&it.unitPrice>0&&it.qKg==null){
+    resolveValorToKg(it,it.unitPrice);
+  }
   return it;
 }
 function normOrder(o){
@@ -43,6 +49,7 @@ function normOrder(o){
   return o;
 }
 function itemLabel(it){
+  if(typeof itemDisplayLine==='function') return itemDisplayLine(it);
   const p=DB.products.find(x=>x.id===it.p);
   const name=p?p.name:'—';
   const q=it.w!=null?it.w:it.q;
@@ -50,6 +57,10 @@ function itemLabel(it){
   return `${name}: ${q} ${u}`;
 }
 function calcItemTotal(it){
+  if(it.u==='valor'){
+    if(it.qKg!=null&&it.unitPrice) return Math.round(it.qKg*it.unitPrice);
+    return +it.q||+it.valorPedido||0;
+  }
   const w=it.w!=null?+it.w:+it.q;
   if(!it.unitPrice||!w) return 0;
   if(it.priceUnit==='gramo'&&it.u==='kilo') return (w*1000/it.unitPrice)*it.unitPrice; // simplified
@@ -60,6 +71,59 @@ function calcItemTotal(it){
 }
 function orderTotal(o){
   return o.items.reduce((s,it)=>s+(it.total!=null?+it.total:calcItemTotal(it)),0);
+}
+function orderTotalAcomodado(o){
+  normOrder(o);
+  return o.items.reduce((s,it)=>{
+    if(it.w==null||it.w===''||it.unitPrice==null) return s;
+    return s+(it.total!=null?+it.total:(typeof calcPriceTotal==='function'?calcPriceTotal(it):0));
+  },0);
+}
+function orderAcomodoPendingCount(o){
+  return (o.items||[]).filter(it=>it.w==null||it.w==='').length;
+}
+function orderNeedsTranscription(o){
+  if(!o?.imagenOriginal) return false;
+  if(o.photoOnly||!o.items?.length) return true;
+  return !o.transcripcionAplicadaEn;
+}
+function parseOrderPriceInput(el){
+  if(!el) return NaN;
+  return typeof parsePriceInput==='function'?parsePriceInput(el.value):parseFloat(el.value);
+}
+function formatOrderPriceValue(n){
+  if(n==null||n===''||isNaN(n)) return '';
+  return typeof fmtMoneyInput==='function'?fmtMoneyInput(n):String(n);
+}
+function itemLineTotalDisplay(it){
+  if(it.unitPrice==null) return null;
+  if(it.w==null||it.w==='') return {pending:true};
+  const tot=it.total!=null?+it.total:calcPriceTotal(it);
+  return {pending:false,total:tot};
+}
+function orderIsIncomplete(o){
+  if(!o) return true;
+  normOrder(o);
+  if(!o.items?.length) return true;
+  return o.items.some(it=>it.unitPrice==null||it.total==null);
+}
+function orderIsAcomodadoGreen(o){
+  return ['acomodado','remisionado','cerrado','pesado','facturado','consolidado'].includes(o?.status);
+}
+function orderNeedsPricing(o){
+  if(!o||!orderIsAcomodadoGreen(o)) return false;
+  normOrder(o);
+  if(!o.items?.length) return false;
+  return o.items.some(it=>it.unitPrice==null);
+}
+function orderIsPricingComplete(o){
+  if(!o||!orderIsAcomodadoGreen(o)) return false;
+  normOrder(o);
+  if(!o.items?.length) return false;
+  return o.items.every(it=>it.w!=null&&it.w!==''&&it.unitPrice!=null);
+}
+function incompleteWidgetHTML(){
+  return `<div class="incomplete-widget"><span class="incomplete-badge">Incompleta</span></div>`;
 }
 function statusChip(st){
   const m={pendiente:'pend',acomodando:'cons',acomodado:'cons',remisionado:'cons',pesado:'cons',facturado:'cons',consolidado:'cons',cerrado:'cerr',anulado:'anul'};
@@ -89,12 +153,14 @@ function remisionHTML(orders,title,remisionNo){
     else{merged[k].q=(+merged[k].q||0)+(+it.q||0); if(it.w) merged[k].w=(+(merged[k].w||0))+(+it.w);}
   }));
   const lines=Object.values(merged).map(it=>{
-    const p=DB.products.find(x=>x.id===it.p)||{name:'—'};
+    const name=typeof itemProductName==='function'?itemProductName(it):(DB.products.find(x=>x.id===it.p)||{name:'—'}).name;
+    if(typeof normItem==='function') normItem(it);
     const cant=it.w!=null?it.w:it.q;
     const u=fmtUnit(it.wUnit||it.u);
     const unit=it.unitPrice!=null?fmtMoney(it.unitPrice):'';
-    const tot=it.total!=null?fmtMoney(it.total):(it.unitPrice?fmtMoney(Math.round(cant*it.unitPrice)):'');
-    return {name:p.name,cant:`${cant} ${u}`,unit,tot};
+    const totVal=it.total!=null?+it.total:(typeof calcPriceTotal==='function'?calcPriceTotal(it):0);
+    const tot=totVal?fmtMoney(totVal):'';
+    return {name,cant:`${cant} ${u}`,unit,tot};
   });
   const half=Math.ceil(lines.length/2);
   const colA=lines.slice(0,half), colB=lines.slice(half);
@@ -134,75 +200,148 @@ function printRemision(orders,title){
   window.print();
   setTimeout(()=>{$('#printArea').style.display='none';},500);
 }
-function mergeAndPrint(clientId,orderIds){
-  const orders=orderIds.map(id=>DB.orders.find(x=>x.id===id)).filter(Boolean);
-  if(!orders.length){toast('Selecciona al menos un pedido');return;}
-  const no=nextRemisionNo();
-  orders.forEach(o=>{if(!o.remisionNo)o.remisionNo=no;});
-  flushSave().then(()=>{
-    printRemision(orders,'Resumen de '+orders.length+' pedido(s)');
-    audit('Generó resumen PDF','Remisión '+no+' · '+clientName(clientId));
-  });
+
+/* ---------- facturación admin (prueba 10 días) ---------- */
+const BILLING_TRIAL_DAYS=10;
+let billingClientId=null;
+let billingSelectedOrders=new Set();
+
+function ensureBillingTrialStart(){
+  if(!DB.config.billingTrialStart){
+    DB.config.billingTrialStart=new Date().toISOString();
+    saveDB();
+  }
+}
+function billingTrialDaysLeft(){
+  ensureBillingTrialStart();
+  const start=new Date(DB.config.billingTrialStart).getTime();
+  const elapsed=(Date.now()-start)/(86400000);
+  return Math.max(0,Math.ceil(BILLING_TRIAL_DAYS-elapsed));
+}
+function billingTrialActive(){return billingTrialDaysLeft()>0;}
+
+function orderRemisionNo(o){
+  if(!o) return null;
+  if(o.remisionNo) return o.remisionNo;
+  const rem=(DB.remisiones||[]).find(r=>r.pedidoId===o.id);
+  return rem?.numero??null;
 }
 
-/* ---------- compras / consolidado por turno ---------- */
-function renderConsol(){
-  const list=ordersOf(consolDate);
-  const manana=list.filter(o=>o.shift==='manana');
-  const madrugada=list.filter(o=>o.shift==='madrugada');
-  const extra=(DB.purchases||[]).filter(p=>p.date===consolDate);
-  const renderBlock=(orders,label)=>{
-    const sum={};
-    orders.forEach(o=>o.items.forEach(it=>{
-      const k=it.p+'|'+(it.u||'kilo');
-      sum[k]=sum[k]||{q:0,u:it.u||'kilo',clients:{}};
-      sum[k].q+=+it.q||0;
-      sum[k].clients[o.clientId]=(sum[k].clients[o.clientId]||0)+(+it.q||0);
-    }));
-    extra.filter(p=>p.shift===(label.includes('madrugada')?'madrugada':'manana')).forEach(p=>{
-      const k=p.productId+'|'+(p.unit||'kilo');
-      sum[k]=sum[k]||{q:0,u:p.unit||'kilo',clients:{},extra:true};
-      sum[k].q+=+p.qty||0;
-    });
-    const rows=Object.entries(sum).sort((a,b)=>{
-      const pa=DB.products.find(x=>x.id===a[0].split('|')[0]);
-      const pb=DB.products.find(x=>x.id===b[0].split('|')[0]);
-      return (pa?pa.name:'').localeCompare(pb?pb.name:'');
-    }).map(([k,d],i)=>{
-      const pid=k.split('|')[0]; const p=DB.products.find(x=>x.id===pid); if(!p)return'';
-      const det=Object.entries(d.clients).map(([cid,q])=>`${clientName(cid)}: ${q}`).join(' · ');
-      return `<div class="consol-row pop" style="animation-delay:${i*40}ms;flex-wrap:wrap" onclick="this.classList.toggle('open')">
-        <span class="ce">${p.emoji||'🥬'}</span>
-        <div class="cn"><b>${p.name}</b><span style="font-size:12px;color:var(--ink-soft);font-weight:700">${det||'Compra manual'}</span></div>
-        <div class="cq">${d.q}<small>${fmtUnit(d.u)}</small></div>
-        ${det?`<div class="detail-clients">👥 ${det}</div>`:''}</div>`;
+function facturaGeneralHTML(clientId,orderIds){
+  const c=DB.clients.find(x=>x.id===clientId)||{};
+  const orders=orderIds.map(id=>DB.orders.find(x=>x.id===id)).filter(Boolean);
+  const grandTotal=orders.reduce((s,o)=>s+orderTotal(o),0);
+  const d=new Date();
+  const sections=orders.map(o=>{
+    const num=orderRemisionNo(o);
+    const rows=o.items.map(it=>{
+      const p=DB.products.find(x=>x.id===it.p)||{name:'Producto'};
+      const cant=it.w!=null?it.w:it.q;
+      const u=fmtUnit(it.wUnit||it.u);
+      const unit=it.unitPrice!=null?fmtMoney(it.unitPrice):'';
+      const tot=it.total!=null?fmtMoney(it.total):(it.unitPrice?fmtMoney(Math.round(cant*it.unitPrice)):'');
+      return `<tr><td>${cant} ${u}</td><td>${p.name}</td><td>${unit}</td><td>${tot}</td></tr>`;
     }).join('');
-    return `<div class="card pop" style="padding:12px;margin-bottom:10px">
-      <b class="display" style="font-size:16px">${label}</b>
-      <span style="font-size:12px;color:var(--ink-soft);font-weight:700;display:block;margin:4px 0 8px">${orders.length} pedido(s)</span>
-      ${rows||'<span style="color:var(--ink-soft);font-weight:700;font-size:13px">Sin acumulado</span>'}
+    return `<div style="margin-bottom:14px;border:1.5px solid #b8c9e0;border-radius:8px;padding:10px;page-break-inside:avoid">
+      <div style="font-weight:bold;margin-bottom:8px;color:#1a4480;font-size:12px">
+        Pedido ${fmtDate(o.date)} · ${fmtTime12(o.time)}${o.description?' · '+o.description:''}
+        <span style="color:#c00;margin-left:8px">REMISIÓN Nº ${num||'—'}</span>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:10px">
+        <tr style="background:#1a4480;color:#fff"><th>CANT.</th><th>ARTÍCULO</th><th>VR. UNIT.</th><th>VR. TOTAL</th></tr>
+        ${rows}
+      </table>
+      <div style="text-align:right;font-weight:bold;margin-top:6px;font-size:11px">Subtotal pedido: $ ${fmtMoney(orderTotal(o))}</div>
     </div>`;
-  };
-  $('#adminBody').innerHTML=`
-    <div class="card pop" style="padding:12px;margin-bottom:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <b class="display" style="font-size:17px">🧮 Lista de compra</b><div class="spacer"></div>
-      <input type="date" value="${consolDate}" onchange="consolDate=this.value;renderConsol()" style="border:2px solid var(--line);border-radius:11px;padding:8px;font-weight:700">
+  }).join('');
+  return `<div style="font-family:Arial,sans-serif;font-size:11px;color:#1a4480;max-width:800px;margin:0 auto;padding:16px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1a4480;padding-bottom:8px;margin-bottom:12px">
+      <div><div style="font-size:22px;font-weight:bold;color:#1a4480">${COMPANY.name}</div>
+        <div>${COMPANY.owner}</div><div>C.C. ${COMPANY.cc}</div>
+        <div>${COMPANY.address}</div><div>Cel: ${COMPANY.phone} - ${COMPANY.city}</div></div>
+      <div style="text-align:right"><div style="font-size:24px;font-weight:bold;border:3px solid #1a4480;padding:4px 14px">FACTURA</div>
+        <div style="font-size:12px;margin-top:6px">DIA <u>${d.getDate()}</u> MES <u>${d.getMonth()+1}</u> AÑO <u>${d.getFullYear()}</u></div></div>
     </div>
-    <button class="btn orange block pop" style="margin-bottom:10px" onclick="openAddPurchase()">➕ Añadir compra manual</button>
-    ${renderBlock(manana,'☀️ Turno mañana (pedidos antes de 2 pm)')}
-    ${renderBlock(madrugada,'🌙 Compra madrugada (pedidos 2 pm – 11:59 pm → comprar 3–6 am)')}
-    <div style="display:grid;gap:10px;grid-template-columns:1fr 1fr;margin-top:6px">
-      <button class="btn yellow" onclick="printConsol()">🖨️ Imprimir / PDF</button>
-      ${consolDate===todayStr()?`<button class="btn green" onclick="closeDay()">🔒 Cerrar el día</button>`:''}
-    </div>`;
+    <div style="margin-bottom:14px;font-size:12px">
+      <b>Señor(es):</b> ${c.name||'—'} &nbsp; <b>Nit:</b> ${c.nit||'—'}<br>
+      <b>Dirección:</b> ${c.address||'—'} &nbsp; <b>Teléfono:</b> ${c.phone||'—'} &nbsp; <b>Ciudad:</b> ${c.city||'Manizales'}
+      <br><b>Resumen de ${orders.length} pedido(s) con remisión</b>
+    </div>
+    ${sections}
+    <div style="display:flex;justify-content:flex-end;margin-top:14px">
+      <div style="border:3px solid #1a4480;padding:10px 28px;font-size:20px;font-weight:bold;background:#e8f0fa">TOTAL GENERAL $ ${fmtMoney(grandTotal)}</div>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-top:36px;font-size:11px">
+      <div style="border-top:1px solid #1a4480;width:40%;text-align:center;padding-top:4px">Firma</div>
+      <div style="border-top:1px solid #1a4480;width:40%;text-align:center;padding-top:4px">CC/NIT.</div>
+    </div></div>`;
 }
+
+function adminGenerateFactura(clientId,orderIds){
+  if(!billingTrialActive()){toast('Periodo de prueba de facturación finalizado');return;}
+  const orders=orderIds.map(id=>DB.orders.find(x=>x.id===id)).filter(Boolean);
+  if(!orders.length){toast('Selecciona al menos un pedido');return;}
+  const sinRem=orders.filter(o=>!orderRemisionNo(o));
+  if(sinRem.length){toast('Solo pedidos con remisión creada. Crea la remisión primero.');return;}
+  const html=facturaGeneralHTML(clientId,orderIds);
+  $('#printArea').innerHTML=html; $('#printArea').style.display='block';
+  window.print();
+  setTimeout(()=>{$('#printArea').style.display='none';},500);
+  audit('Generó factura general',`${clientName(clientId)} · ${orders.length} pedido(s) · ${orders.map(o=>'Rem.'+orderRemisionNo(o)).join(', ')}`);
+}
+
+function toggleBillingOrder(id,on){
+  if(on) billingSelectedOrders.add(id);
+  else billingSelectedOrders.delete(id);
+}
+
+function renderFacturacion(){
+  ensureBillingTrialStart();
+  const trialOk=billingTrialActive();
+  const daysLeft=billingTrialDaysLeft();
+  if(!billingClientId&&DB.clients.length) billingClientId=DB.clients[0].id;
+  const clientOpts=DB.clients.map(c=>`<option value="${c.id}" ${c.id===billingClientId?'selected':''}>${c.name}</option>`).join('');
+  const mine=DB.orders.filter(o=>o.clientId===billingClientId&&o.status!=='anulado'&&orderRemisionNo(o))
+    .sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
+  const trialBanner=trialOk
+    ?`<div class="billing-trial">🧾 <b>Facturación — prueba gratuita:</b> ${daysLeft} día(s) restante(s). Unifica pedidos con remisión para enviar al cliente.</div>`
+    :`<div class="billing-expired">⏳ El periodo de prueba de facturación terminó. Contacta soporte para activar el módulo.</div>`;
+  const rows=mine.length?mine.map(o=>{
+    const num=orderRemisionNo(o);
+    const det=typeof orderPreview==='function'?orderPreview(o,3):o.items.length+' productos';
+    return `<div class="list-row">
+      <input type="checkbox" style="width:20px;height:20px;flex:none" ${billingSelectedOrders.has(o.id)?'checked':''} onchange="toggleBillingOrder('${o.id}',this.checked)" ${trialOk?'':'disabled'}>
+      <span class="le">🧾</span>
+      <div class="lt"><b>${fmtDate(o.date)} · ${fmtTime12(o.time)}</b>
+        <span>${det}</span>
+        <span style="color:var(--green);font-size:12px;font-weight:800">Remisión Nº ${num}</span>
+        <span style="color:var(--ink-soft);font-size:12px"> · $${fmtMoney(orderTotal(o))}</span>
+      </div>
+      <button type="button" class="icon-btn" onclick="viewRemision(null,${num})" title="Ver remisión">👁️</button>
+    </div>`;
+  }).join(''):'<div class="empty" style="padding:16px"><span class="ee">📭</span><span>Sin pedidos con remisión para este cliente</span></div>';
+  $('#adminBody').innerHTML=`
+    ${trialBanner}
+    <div class="card pop" style="padding:12px;margin-bottom:10px">
+      <b class="display" style="font-size:17px">🧾 Facturación a clientes</b>
+      <p style="font-size:13px;color:var(--ink-soft);font-weight:700;margin:6px 0 10px">Selecciona pedidos remisionados y genera la factura general con el Nº de remisión de cada uno.</p>
+      <div class="field"><label>Cliente</label>
+        <select id="billCli" onchange="billingClientId=this.value;billingSelectedOrders=new Set();renderFacturacion()" style="width:100%">${clientOpts}</select></div>
+    </div>
+    <div style="margin-bottom:10px">${rows}</div>
+    <button class="btn yellow block" onclick="adminGenerateFactura(billingClientId,[...billingSelectedOrders])" ${trialOk?'':'disabled'}>📄 Generar factura general (PDF)</button>`;
+  renderNotifFab();
+}
+window._renderFacturacionImpl=renderFacturacion;
+
+/* ---------- compra manual (UI en compras.js) ---------- */
 function openAddPurchase(){
   const opts=activeProducts().map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
   openSheet('➕ Compra manual',`
     <div class="field"><label>Producto</label><select id="purProd">${opts}</select></div>
     <div class="field"><label>Cantidad</label><input id="purQty" inputmode="decimal" value="1"></div>
     <div class="field"><label>Unidad</label><select id="purUnit">${UNITS.map(u=>`<option value="${u.id}">${u.label}</option>`).join('')}</select></div>
-    <div class="field"><label>Turno</label><select id="purShift"><option value="manana">Mañana</option><option value="madrugada">Madrugada (3–6 am)</option></select></div>
+    <div class="field"><label>Turno</label><select id="purShift"><option value="manana" ${typeof nextPurchaseShift==='function'&&nextPurchaseShift()==='manana'?'selected':''}>Mañana</option><option value="madrugada" ${typeof nextPurchaseShift==='function'&&nextPurchaseShift()==='madrugada'?'selected':''}>Madrugada (3–6 am)</option></select></div>
     <div class="field"><label>Nota</label><input id="purNote" placeholder="Opcional"></div>`,
     [{label:'Guardar',cls:'green',fn:()=>{
       if(!DB.purchases) DB.purchases=[];
@@ -219,11 +358,11 @@ function orderRowHTML(o){
   if(typeof window._orderRowHTML==='function') return window._orderRowHTML(o);
   normOrder(o);
   const c=DB.clients.find(x=>x.id===o.clientId)||{};
-  const det=o.items.map(it=>itemLabel(it)).join(', ');
+  const det=typeof orderPreview==='function'?orderPreview(o,4):(o.items||[]).length+' productos';
   const ch={app:'📱',voz:'🎙️',foto:'📸',manual:'✍️'}[o.channel]||'📱';
   return `<div class="list-row" style="cursor:pointer" onclick="openOrderDetail('${o.id}')">
     <span class="le">${c.emoji||'🏪'}</span>
-    <div class="lt"><b>${c.name||'—'} <small style="font-weight:700;color:var(--ink-soft)">${ch} ${o.time}</small></b>
+    <div class="lt"><b>${c.name||'Cliente'} <small style="font-weight:700;color:var(--ink-soft)">${ch} ${fmtTime12(o.time)}</small></b>
       <span>${det}</span></div>
     <span class="chip ${statusChip(o.status)}">${statusLabel(o.status)}</span>
   </div>`;
@@ -233,38 +372,31 @@ function renderClientHistory(){
   const box=$('#histList'); box.innerHTML='';
   const mine=DB.orders.filter(o=>o.clientId===session.id&&o.status!=='anulado');
   if(!mine.length){box.innerHTML=`<div class="empty"><span class="ee">🧺</span><b class="display">Aún no tienes pedidos</b></div>`;return;}
-  window.selectedOrders=new Set();
-  const toolbar=`<div class="card pop" style="padding:10px;margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-    <span style="font-size:13px;font-weight:700;color:var(--ink-soft)">Selecciona pedidos para unificar factura</span>
-    <button class="btn yellow sm" onclick="mergeClientOrders()">📄 Resumen PDF</button></div>`;
-  box.innerHTML=toolbar;
   const byDate={}; mine.forEach(o=>{(byDate[o.date]=byDate[o.date]||[]).push(o);});
   Object.keys(byDate).sort().reverse().forEach((d,di)=>{
     const day=document.createElement('div'); day.className='hist-day'; day.style.animationDelay=(di*60)+'ms';
     day.innerHTML=`<h3>📅 ${fmtDate(d)}</h3>`;
     byDate[d].forEach(o=>{
       normOrder(o);
-      const det=o.items.map(it=>itemLabel(it)).join(' · ');
+      const det=typeof orderPreview==='function'?orderPreview(o,4):o.items.length+' productos';
+      const remNo=orderRemisionNo(o);
       day.innerHTML+=`<div class="list-row">
-        <input type="checkbox" style="width:20px;height:20px" onchange="toggleOrderSel('${o.id}',this.checked)">
-        <span class="le">🧾</span><div class="lt"><b>${o.time}${o.deliveryTime?' · entrega '+o.deliveryTime:''}${o.description?' · '+o.description:''}</b><span>${det}</span>
-        ${o.remisionNo?`<span style="color:var(--green);font-size:12px">Remisión ${o.remisionNo}</span>`:''}</div>
+        <span class="le">🧾</span><div class="lt"><b>${fmtTime12(o.time)}${o.deliveryTime?' · entrega '+fmtTime12(o.deliveryTime):''}${o.description?' · '+o.description:''}</b><span>${det}</span>
+        ${remNo?`<span style="color:var(--green);font-size:12px;font-weight:700">Remisión Nº ${remNo}</span>`:''}</div>
         <span class="chip ${statusChip(o.status)}">${statusLabel(o.status)}</span></div>`;
     });
     box.appendChild(day);
   });
 }
-function toggleOrderSel(id,on){if(on)selectedOrders.add(id);else selectedOrders.delete(id);}
-function mergeClientOrders(){mergeAndPrint(session.id,[...selectedOrders]);}
 
 function clientHistoryAdmin(cid){
-  window.selectedOrders=new Set();
-  window.mergeClientId=cid;
   const c=DB.clients.find(x=>x.id===cid);
   const mine=DB.orders.filter(o=>o.clientId===cid&&o.status!=='anulado').slice(0,50);
   openSheet('📋 '+c.name,`
-    <button class="btn yellow sm block" style="margin-bottom:10px" onclick="mergeAndPrint(mergeClientId,[...selectedOrders]);closeSheet()">📄 Unificar seleccionados en PDF</button>
-    ${mine.map(o=>`<div class="list-row"><input type="checkbox" style="width:20px;height:20px" onchange="toggleOrderSel('${o.id}',this.checked)">
-      <div class="lt"><b>${fmtDate(o.date)} ${o.time}</b><span>${o.items.length} productos · ${statusLabel(o.status)}</span></div>
-      <button class="icon-btn" onclick="openOrderDetail('${o.id}')">👁️</button></div>`).join('')||'<div class="empty"><span class="ee">🧺</span><span>Sin pedidos</span></div>'}`,[]);
+    ${mine.map(o=>{
+      const remNo=orderRemisionNo(o);
+      return `<div class="list-row">
+      <div class="lt"><b>${fmtDate(o.date)} ${fmtTime12(o.time)}</b><span>${o.items.length} productos · ${statusLabel(o.status)}${remNo?' · Rem. '+remNo:''}</span></div>
+      <button class="icon-btn" onclick="openOrderDetail('${o.id}')">👁️</button></div>`;
+    }).join('')||'<div class="empty"><span class="ee">🧺</span><span>Sin pedidos</span></div>'}`,[]);
 }

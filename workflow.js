@@ -11,6 +11,7 @@ const MOTIVATIONAL=[
 ];
 const STATUS_MAP={pesado:'acomodado',facturado:'remisionado',consolidado:'cerrado'};
 const STATUS_COLORS={
+  por_confirmar:{bg:'rgba(255,122,31,.18)',chip:'exc'},
   pendiente:{bg:'rgba(229,72,77,.2)',chip:'pend'},
   acomodando:{bg:'rgba(255,198,26,.2)',chip:'cons',pulse:true},
   acomodado:{bg:'rgba(31,168,77,.2)',chip:'cons'},
@@ -30,6 +31,8 @@ function migrateWorkflow(){
   (DB.workers||[]).forEach(w=>{if(!w.avatarEmoji) w.avatarEmoji='👩‍🌾'; if(w.activo==null) w.activo=true;});
   DB.orders.forEach(o=>{
     if(STATUS_MAP[o.status]) o.status=STATUS_MAP[o.status];
+    if(o.transcribeDraft==null) o.transcribeDraft=null;
+    if(!o.transcripcionAplicadaEn&&o.imagenOriginal&&o.items?.length&&!o.photoOnly) o.transcripcionAplicadaEn=o.confirmadoEn||null;
     if(!o.operarioId&&o.weighedBy){
       const w=(DB.workers||[]).find(x=>x.name===o.weighedBy);
       if(w) o.operarioId=w.id;
@@ -54,24 +57,42 @@ function dispatchDayLabel(){
   return DIAS[d.getDay()];
 }
 function workerName(id){const w=(DB.workers||[]).find(x=>x.id===id);return w?w.name:'';}
-function productName(pid){const p=DB.products.find(x=>x.id===pid);return p?p.name:'—';}
-
-function orderPreview(o,max=3){
-  if(o.photoOnly&&!o.items?.length) return '📷 Pedido por foto — pendiente de transcribir';
-  const names=(o.items||[]).map(it=>productName(it.p));
-  const shown=names.slice(0,max).join(', ');
-  return shown+(names.length>max?` +${names.length-max} más`:'');
-}
+function productName(pid){const p=DB.products.find(x=>x.id===pid);return p?p.name:'';}
 
 function statusChip(st){
-  const m={pendiente:'pend',acomodando:'cons',acomodado:'cons',remisionado:'cons',pesado:'cons',facturado:'cons',consolidado:'cons',cerrado:'cerr',anulado:'anul'};
+  const m={por_confirmar:'exc',pendiente:'pend',acomodando:'cons',acomodado:'cons',remisionado:'cons',pesado:'cons',facturado:'cons',consolidado:'cons',cerrado:'cerr',anulado:'anul'};
   return m[st]||'pend';
 }
 function statusLabel(st){
-  return {pendiente:'Pendiente',acomodando:'Acomodándose…',acomodado:'Acomodado',remisionado:'Remisionado',pesado:'Acomodado',facturado:'Remisionado',consolidado:'Consolidado',cerrado:'Cerrado',anulado:'Anulado'}[st]||st;
+  return {por_confirmar:'Por confirmar',pendiente:'Pendiente',acomodando:'Acomodándose…',acomodado:'Acomodado',remisionado:'Remisionado',pesado:'Acomodado',facturado:'Remisionado',consolidado:'Consolidado',cerrado:'Cerrado',anulado:'Anulado'}[st]||st;
+}
+function ordersVisibleToWorkers(o){
+  return o&&o.status!=='por_confirmar'&&o.status!=='anulado';
 }
 
+function sortByDeliveryTime(a,b){
+  const ta=a.deliveryTime||'99:99';
+  const tb=b.deliveryTime||'99:99';
+  if(ta!==tb) return ta.localeCompare(tb);
+  return (a.time||'').localeCompare(b.time||'');
+}
+
+function syncOrderDetailScrollPad(){
+  requestAnimationFrame(()=>{
+    const bottom=$('#orderDetailBottom');
+    const scroll=$('#orderDetailBody');
+    if(bottom&&scroll) scroll.style.paddingBottom=(bottom.offsetHeight+20)+'px';
+  });
+}
+window.syncOrderDetailScrollPad=syncOrderDetailScrollPad;
+
 function calcPriceTotal(it){
+  normItem(it);
+  if(it.u==='valor'){
+    const valor=+it.q||+it.valorPedido||0;
+    if(it.qKg!=null&&it.unitPrice) return Math.round(it.qKg*it.unitPrice);
+    return valor;
+  }
   const qty=it.w!=null?+it.w:+it.q;
   const qU=it.wUnit||it.u||'kilo';
   const pU=it.priceUnit||'kilo';
@@ -80,6 +101,8 @@ function calcPriceTotal(it){
   let amt=qty;
   if(pU==='kilo'&&qU==='gramo') amt=qty/1000;
   else if(pU==='gramo'&&qU==='kilo') amt=qty*1000;
+  else if(pU==='kilo'&&qU==='libra') amt=qty*0.453592;
+  else if(pU==='libra'&&qU==='kilo') amt=qty/0.453592;
   return Math.round(amt*price);
 }
 
@@ -91,15 +114,22 @@ function orderCardHTML(o,opts={}){
   const op=o.operarioId?workerName(o.operarioId):'';
   const pulse=sc.pulse?'<span class="acomodando-pulse">Acomodándose…</span>':'';
   const onclick=opts.onclick||`openOrderDetail('${o.id}')`;
-  return `<div class="order-card pop" style="background:${sc.bg};cursor:pointer" onclick="${onclick}">
+  const isAdmin=session?.role==='admin'&&!opts.worker;
+  const needsPricing=isAdmin&&typeof orderNeedsPricing==='function'&&orderNeedsPricing(o);
+  const isListo=isAdmin&&typeof orderIsPricingComplete==='function'&&orderIsPricingComplete(o);
+  const cardCls=['order-card','pop'];
+  if(needsPricing) cardCls.push('order-needs-pricing');
+  const listoBadge=isListo?'<div class="order-listo-corner"><span>LISTO</span></div>':'';
+  return `<div class="${cardCls.join(' ')}" style="background:${sc.bg};cursor:pointer" onclick="${onclick}">
     <div class="oc-head"><span class="oc-emoji">${c.emoji||'🏪'}</span>
       <div class="oc-title"><b>${c.name||'—'}</b>
-        <span>${ch} ${o.time}${o.deliveryTime?' · 🕐 '+o.deliveryTime:''}${o.description?' · 📝 '+o.description:''}</span>
+        <span>${ch} ${fmtTime12(o.time)}${o.deliveryTime?' · 🕐 '+fmtTime12(o.deliveryTime):''}${o.description?' · 📝 '+o.description:''}</span>
         ${pulse||`<span class="oc-preview">${orderPreview(o)}</span>`}
         ${op?`<span class="oc-op">${op}</span>`:''}
+        ${needsPricing?'<span class="oc-preview" style="color:var(--green-dark);margin-top:4px">💰 Falta poner precios</span>':''}
       </div>
       <span class="chip ${sc.chip||statusChip(o.status)}">${statusLabel(o.status)}</span>
-    </div></div>`;
+    </div>${listoBadge}</div>`;
 }
 
 function orderRowHTML(o){return orderCardHTML(o);}
@@ -107,15 +137,11 @@ function orderRowHTML(o){return orderCardHTML(o);}
 /* ---------- operario: pantalla inicio ---------- */
 function renderWorker(){
   const date=todayStr();
-  const byClient={};
-  DB.orders.filter(o=>o.date===date&&o.status!=='anulado'&&o.status!=='cerrado'&&o.status!=='remisionado')
-    .forEach(o=>{
-      if(!byClient[o.clientId]||o.time>byClient[o.clientId].time) byClient[o.clientId]=o;
-    });
-  const list=Object.values(byClient).sort((a,b)=>a.time.localeCompare(b.time));
+  const list=DB.orders.filter(o=>o.date===date&&ordersVisibleToWorkers(o)&&o.status!=='cerrado'&&o.status!=='remisionado')
+    .sort(sortByDeliveryTime);
   $('#workerBody').innerHTML=`
-    <p style="font-size:13px;color:var(--ink-soft);font-weight:700;margin-bottom:10px">Pedidos de hoy por cliente — toca para acomodar o ver.</p>
-    ${list.map(o=>orderCardHTML(o,{onclick:`workerTapOrder('${o.id}')`})).join('')||
+    <p style="font-size:13px;color:var(--ink-soft);font-weight:700;margin-bottom:10px">Pedidos de hoy por hora de entrega — toca para acomodar o ver.</p>
+    ${list.map(o=>orderCardHTML(o,{onclick:`workerTapOrder('${o.id}')`,worker:true})).join('')||
       '<div class="empty"><span class="ee">✅</span><b class="display">Sin pedidos hoy</b><span>Cuando lleguen pedidos aparecerán aquí</span></div>'}`;
   renderNotifFab();
   renderAcomodoBubble();
@@ -126,11 +152,15 @@ function workerTapOrder(id){
   if(o.status==='pendiente'){
     openSheet('🏪 '+clientName(o.clientId),`<p style="font-weight:700;margin-bottom:12px">${orderPreview(o,5)}</p>`,[
       {label:'📦 Acomodar pedido',cls:'green',fn:()=>{closeSheet();startAcomodo(id);}},
-      {label:'👁️ Solo ver',cls:'ghost',fn:()=>{closeSheet();openAcomodoPanel(id,true);}},
+      {label:'👁️ Solo ver',cls:'ghost',fn:()=>{closeSheet();openWorkerAcomodoPage(id,true);}},
     ]);
     return;
   }
-  openAcomodoPanel(id,o.operarioId!==session.id);
+  if(o.status==='acomodando'&&o.operarioId===session.id){
+    openWorkerAcomodoPage(id,false);
+    return;
+  }
+  openWorkerAcomodoPage(id,o.operarioId!==session.id);
 }
 
 function startAcomodo(id){
@@ -142,7 +172,63 @@ function startAcomodo(id){
   o.operarioId=session.id;
   o.acomodoIniciadoEn=o.acomodoIniciadoEn||new Date().toISOString();
   audit('Tomó pedido para acomodar',clientName(o.clientId));
-  flushSave().then(()=>{openAcomodoPanel(id,false);renderWorker();});
+  flushSave().then(()=>{openWorkerAcomodoPage(id);renderWorker();});
+}
+
+function openWorkerAcomodoPage(id,readOnly){
+  const o=DB.orders.find(x=>x.id===id); if(!o)return;
+  normOrder(o);
+  window._workerAcomodoId=id;
+  window._workerAcomodoReadOnly=!!readOnly||!(o.status==='acomodando'&&o.operarioId===session.id);
+  renderWorkerAcomodoPage();
+  showView('v-worker-acomodo');
+}
+
+function renderWorkerAcomodoPage(){
+  const id=window._workerAcomodoId;
+  const o=DB.orders.find(x=>x.id===id); if(!o){showView('v-worker');return;}
+  normOrder(o);
+  const ro=window._workerAcomodoReadOnly;
+  $('#workerAcomodoTitle').textContent=clientName(o.clientId);
+  $('#workerAcomodoSub').textContent=`${statusLabel(o.status)} · Pedido ${fmtTime12(o.time)}`;
+  const rows=o.items.map((it,i)=>{
+    const p=DB.products.find(x=>x.id===it.p)||{};
+    const wVal=it.w!=null?it.w:'';
+    const wU=it.wUnit||it.u||'kilo';
+    return `<div class="rev-row worker-acom-row" data-ai="${i}">
+      <span class="re">${typeof productThumbHTML==='function'?productThumbHTML(p,32):p.emoji||'🥬'}</span>
+      <div class="rn"><b>${typeof itemProductName==='function'?itemProductName(it):(p.name||'Producto')}</b>
+        <span>Pedido: ${it.q} ${it.uCliente||fmtUnit(it.u)}</span>
+        ${it.equivNote?`<span style="display:block;font-size:12px;color:var(--ink-soft)">📝 ${it.equivNote}</span>`:''}
+        ${it.notaAdmin?`<span style="display:block;font-size:12px;color:var(--orange-dark)">👩‍🌾 ${it.notaAdmin}</span>`:''}
+      </div>
+      <div class="worker-acom-inputs">
+        <input class="qty-in acomodo-in" inputmode="decimal" id="aw_${i}" value="${wVal}" placeholder="Real" ${ro?'disabled':''} oninput="acomodoInput('${id}',${i})">
+        <select id="awu_${i}" class="acomodo-unit" ${ro?'disabled':''} onchange="acomodoInput('${id}',${i})">
+          ${UNITS.map(u=>`<option value="${u.id}" ${wU===u.id?'selected':''}>${u.short}</option>`).join('')}
+        </select>
+      </div>
+    </div>`;
+  }).join('');
+  $('#workerAcomodoBody').innerHTML=`
+    <p style="font-size:13px;color:var(--ink-soft);font-weight:700;margin-bottom:10px">${ro?'Vista de solo lectura.':'Ingresa la cantidad o peso real de cada producto acomodado.'}</p>
+    ${rows||'<div class="empty"><span class="ee">📦</span><span>Sin productos en este pedido</span></div>'}`;
+  const foot=$('#workerAcomodoFoot'); foot.innerHTML='';
+  const addBtn=(label,cls,fn)=>{
+    const b=document.createElement('button'); b.className='btn '+cls; b.textContent=label; b.onclick=fn; foot.appendChild(b);
+  };
+  if(!ro&&o.status==='acomodando'){
+    addBtn('✅ Enviar al administrador','green',()=>finishAcomodo(id));
+    addBtn('↔️ Transferir','yellow',()=>openTransfer(id));
+  }
+  acomodoMinimized=null;
+  renderAcomodoBubble();
+  if(typeof renderWorkerTopActions==='function') renderWorkerTopActions();
+}
+
+function closeWorkerAcomodo(){
+  showView('v-worker');
+  renderWorker();
 }
 
 function saveAcomodoDraft(id){
@@ -164,7 +250,7 @@ function openAcomodoPanel(id,readOnly){
     const wU=it.wUnit||'kilo';
     return `<div class="rev-row" data-ai="${i}">
       <span class="re">${p.emoji||'🥬'}</span>
-      <div class="rn"><b>${p.name}</b><span>Pedido: ${it.q} ${it.uCliente||fmtUnit(it.u)}${it.equivNote?` · 📝 ${it.equivNote}`:''}</span></div>
+      <div class="rn"><b>${p.name}</b><span>Pedido: ${itemQtyLabel(it)}${it.variacion?` · ${it.variacion}`:''}${it.equivNote?` · 📝 ${it.equivNote}`:''}${it.notaAdmin?` · 👩‍🌾 ${it.notaAdmin}`:''}</span></div>
       <input class="qty-in acomodo-in" style="width:70px" inputmode="decimal" id="aw_${i}" value="${wVal}" placeholder="Cant." ${ro?'disabled':''} oninput="acomodoInput('${id}',${i})">
       <select id="awu_${i}" class="acomodo-unit" ${ro?'disabled':''} onchange="acomodoInput('${id}',${i})">
         ${UNITS.map(u=>`<option value="${u.id}" ${wU===u.id?'selected':''}>${u.short}</option>`).join('')}
@@ -209,7 +295,7 @@ function renderAcomodoBubble(){
     document.body.appendChild(el);
   }
   el.innerHTML=`<span>📦 ${acomodoMinimized.client}</span>
-    <button class="btn green sm" onclick="openAcomodoPanel('${acomodoMinimized.id}',false)">Abrir</button>
+    <button class="btn green sm" onclick="openWorkerAcomodoPage('${acomodoMinimized.id}',false)">Abrir</button>
     <button class="icon-btn" onclick="acomodoMinimized=null;renderAcomodoBubble()">✕</button>`;
 }
 
@@ -218,6 +304,7 @@ function finishAcomodo(id){
   o.items.forEach((it,i)=>{
     const w=parseFloat($('#aw_'+i)?.value);
     if(!isNaN(w)&&w>0){it.w=w;it.wUnit=$('#awu_'+i)?.value||'kilo';}
+    if(it.unitPrice!=null) it.total=calcPriceTotal(it);
   });
   o.status='acomodado';
   o.acomodoFinalizadoEn=new Date().toISOString();
@@ -229,7 +316,7 @@ function finishAcomodo(id){
   audit('Acomodó pedido',clientName(o.clientId)+' · '+mins+' min');
   acomodoMinimized=null;
   flushSave().then(()=>{
-    closeSheet();
+    closeWorkerAcomodo();
     renderWorker();
     openSheet('🎉 ¡Listo!',`
       <p style="font-weight:700;font-size:15px;margin-bottom:10px">${msg}</p>
@@ -258,11 +345,11 @@ function openTransfer(id){
     }}]);
 }
 
-function addNotification(userId,tipo,refId,fromId){
-  DB.notifications.unshift({id:uid(),usuarioId:userId,tipo,referenciaId:refId,deUsuarioId:fromId||null,leida:false,creadoEn:new Date().toISOString()});
-  DB.notifications=DB.notifications.slice(0,200);
+function addNotification(userId,tipo,refId,fromId,mensaje){
+  DB.notifications.unshift({id:uid(),usuarioId:userId,tipo,referenciaId:refId,deUsuarioId:fromId||null,mensaje:mensaje||null,leida:false,creadoEn:new Date().toISOString()});
+  DB.notifications=DB.notifications.slice(0,300);
   saveDB();
-  renderNotifFab();
+  if(typeof renderNotifFab==='function') renderNotifFab();
 }
 
 function unreadNotifCount(){
@@ -271,55 +358,9 @@ function unreadNotifCount(){
   return DB.notifications.filter(n=>n.usuarioId===uid&&!n.leida).length;
 }
 
-function renderNotifFab(){
-  if(!session||session.role==='client'){const f=$('#notifFab');if(f)f.style.display='none';return;}
-  let fab=$('#notifFab');
-  if(!fab){
-    fab=document.createElement('button');
-    fab.id='notifFab';
-    fab.className='notif-fab';
-    fab.onclick=openNotifTray;
-    document.body.appendChild(fab);
-  }
-  fab.style.display='flex';
-  const n=unreadNotifCount();
-  fab.innerHTML=`👩‍🌾${n?`<span class="notif-badge">${n}</span>`:''}`;
-}
-
-function openNotifTray(){
-  const uid=session.role==='admin'?'admin':session.id;
-  const list=(DB.notifications||[]).filter(n=>n.usuarioId===uid).sort((a,b)=>b.creadoEn.localeCompare(a.creadoEn));
-  const rows=list.length?list.map(n=>notifRowHTML(n)).join(''):'<div class="empty"><span class="ee">📭</span><span>Sin notificaciones</span></div>';
-  openSheet('👩‍🌾 Avisos de Olga',rows,[]);
-}
-
-function notifRowHTML(n){
-  if(n.tipo==='invitacion_transferencia'){
-    const inv=DB.invitations.find(x=>x.id===n.referenciaId);
-    const o=inv?DB.orders.find(x=>x.id===inv.pedidoId):null;
-    const from=inv?workerName(inv.operarioOrigenId):'—';
-    const c=o?clientName(o.clientId):'—';
-    if(inv&&inv.estado==='pendiente'){
-      return `<div class="notif-row"><b>${from} te transfirió el pedido de ${c}</b>
-        <div style="display:flex;gap:8px;margin-top:8px">
-          <button class="btn green sm" onclick="resolveTransfer('${inv.id}','aceptada','${n.id}')">Aceptar</button>
-          <button class="btn ghost sm" onclick="resolveTransfer('${inv.id}','rechazada','${n.id}')">Rechazar</button>
-        </div></div>`;
-    }
-    return `<div class="notif-row" style="opacity:.6"><b>Transferencia ${inv?.estado||'—'}: ${c}</b></div>`;
-  }
-  if(n.tipo==='remision_recibida'){
-    const rem=DB.remisiones.find(x=>x.id===n.referenciaId);
-    return `<div class="notif-row" style="cursor:pointer" onclick="markNotifRead('${n.id}');viewRemision('${rem?.id||n.referenciaId}')">
-      <b>📄 Remisión Nº ${rem?.numero||'—'} recibida</b>
-      <span style="font-size:12px;color:var(--ink-soft);font-weight:700">${rem?clientName(rem.clienteId):''}</span></div>`;
-  }
-  return `<div class="notif-row">${n.tipo}</div>`;
-}
-
 function markNotifRead(nid){
   const n=DB.notifications.find(x=>x.id===nid);
-  if(n){n.leida=true;saveDB();renderNotifFab();}
+  if(n){n.leida=true;saveDB();if(typeof renderNotifFab==='function') renderNotifFab();}
 }
 
 function resolveTransfer(invId,res,nid){
@@ -330,8 +371,15 @@ function resolveTransfer(invId,res,nid){
   markNotifRead(nid);
   if(res==='aceptada'){
     o.operarioId=inv.operarioDestinoId;
+    o.status='acomodando';
+    if(!o.acomodoIniciadoEn) o.acomodoIniciadoEn=new Date().toISOString();
     addNotification(inv.operarioOrigenId,'transferencia_aceptada',inv.id,session.id);
+    addNotification(inv.operarioDestinoId,'acomodo_transferido',o.id,inv.operarioOrigenId,`Pedido de ${clientName(o.clientId)} — ya puedes acomodarlo`);
     toast('Transferencia aceptada ✅');
+    if(session.id===inv.operarioDestinoId){
+      closeSheet();
+      openWorkerAcomodoPage(o.id,false);
+    }
   }else{
     addNotification(inv.operarioOrigenId,'transferencia_rechazada',inv.id,session.id);
     toast('Transferencia rechazada');
@@ -340,8 +388,189 @@ function resolveTransfer(invId,res,nid){
   flushSave(); closeSheet(); renderWorker(); renderNotifFab();
 }
 
-/* ---------- admin: detalle pedido + remisión ---------- */
+/* ---------- admin: detalle pedido pantalla completa + remisión ---------- */
+function renderOrderDetailPage(id,readOnly){
+  const o=DB.orders.find(x=>x.id===id); if(!o)return;
+  normOrder(o);
+  applyDailyPricesToOrder(o);
+  const c=DB.clients.find(x=>x.id===o.clientId)||{};
+  const isAdmin=session.role==='admin';
+  const isPorConfirmar=o.status==='por_confirmar';
+  const canPriceAdmin=isAdmin&&!readOnly&&(o.status==='pendiente'||isPorConfirmar||o.status==='acomodado')&&!o.remisionNo;
+  const canRemision=isAdmin&&o.status==='acomodado'&&!readOnly;
+  const rem=DB.remisiones.find(r=>r.pedidoId===o.id);
+  $('#orderDetailTitle').textContent=c.name||'Pedido';
+  $('#orderDetailSub').textContent=`${statusLabel(o.status)} · ${fmtTime12(o.time)}`;
+  const photoHero=o.imagenOriginal?`
+    <div class="order-detail-hero order-detail-hero-lg">
+      <img src="${o.imagenOriginal}" alt="Foto del pedido" onclick="showOrderPhotoById('${o.id}')">
+    </div>`:'';
+  const photoInfo=o.photoOnly&&!o.items?.length?`
+    <div class="photo-info-banner">📷 <b>Pedido con foto.</b> ${isAdmin?'Revisa la imagen y transcribe los productos cuando estés lista.':'Olga revisará la foto y armará el pedido.'}</div>`:'';
+  const priceHint=canPriceAdmin?`<div class="photo-info-banner" style="margin-bottom:10px">💰 <b>Precios del día ${fmtDate(o.date||todayStr())}.</b> Se guardan automáticamente para otros pedidos de hoy con el mismo producto.</div>`:'';
+  const incomplete=isAdmin&&orderIsIncomplete(o)&&o.items?.length?incompleteWidgetHTML():'';
+  const needsTranscription=orderNeedsTranscription(o);
+  const savedTranscribe=isAdmin&&o.transcribeDraft?.length&&window.transcribingOrderId!==id
+    ?renderSavedTranscriptionHTML(o.transcribeDraft):'';
+  const transcribePanel=isAdmin&&!readOnly&&window.transcribingOrderId===id?`<div id="orderTranscribePanel" class="transcribe-panel"></div>`:'';
+  const confirmBanner=isPorConfirmar&&isAdmin?`<div class="photo-info-banner" style="margin-bottom:10px;border-color:var(--orange);background:rgba(255,122,31,.12)">📋 <b>Pedido por confirmar.</b> ${needsTranscription?'Transcribe y corrige la foto antes de confirmar. ':'Revisa productos, agrega notas para operarios y confirma para que aparezca en Compras y despacho.'}</div>`:'';
+  const sortedItems=o.items.map((it,i)=>({it,i})).sort((a,b)=>{
+    const aw=a.it.w!=null&&a.it.w!==''?1:0;
+    const bw=b.it.w!=null&&b.it.w!==''?1:0;
+    return aw-bw;
+  });
+  const rows=sortedItems.map(({it,i})=>{
+    const p=DB.products.find(x=>x.id===it.p)||{};
+    const pname=typeof itemProductName==='function'?itemProductName(it):(p.name||'Producto');
+    const acom=it.w!=null&&it.w!==''?` · Acomodado: ${it.w} ${fmtUnit(it.wUnit||'kilo')}`:'';
+    const priced=it.unitPrice!=null;
+    const lineTot=itemLineTotalDisplay(it);
+    const dp=getDailyPrice(it.p,o.date||todayStr());
+    const priceVal=formatOrderPriceValue(it.unitPrice??dp?.unitPrice??'');
+    return `<div class="rev-row order-item-row ${it.w==null||it.w===''?'pending-acomodo':''}" id="prow_${i}">
+      <span class="re">${typeof productThumbHTML==='function'?productThumbHTML(p,36):p.emoji||'🥬'}</span>
+      <div class="rn"><b>${pname}</b>
+        <span>Pedido: ${itemQtyLabel(it)}${it.variacion?` · <b>${it.variacion}</b>`:''}${acom}${!isPorConfirmar&&it.equivNote?` · 📝 ${it.equivNote}`:''}${!isPorConfirmar&&it.notaAdmin?` · 👩‍🌾 ${it.notaAdmin}`:''}</span>
+        ${it.u==='valor'?`<div class="valor-hint">${it.qKg!=null?`✅ ${it.qKg} kg calculados`:'Ingresa precio/kg abajo → se calculan los kilos automáticamente'}</div>`:''}
+        ${isPorConfirmar&&isAdmin?`<input class="nota-admin-in" id="notaAdmin_${i}" placeholder="Nota para operarios (opcional)" value="${(it.notaAdmin||'').replace(/"/g,'&quot;')}">`:''}
+        ${canPriceAdmin?`<div class="order-price-row">
+          <input class="order-price-in" id="pu_${i}" inputmode="decimal" value="${priceVal}" placeholder="Precio hoy" oninput="onOrderPriceInput(${i},'${id}')" onblur="formatOrderPriceBlur(${i})">
+          <select class="order-price-unit" id="punit_${i}" onchange="onOrderPriceInput(${i},'${id}')">
+            ${UNITS.map(u=>`<option value="${u.id}" ${(it.priceUnit||dp?.priceUnit||it.wUnit||it.u||'kilo')===u.id?'selected':''}>/${u.short}</option>`).join('')}
+          </select></div>`:''}
+        ${priced?(lineTot?.pending?`<div class="price-total-box pending">⏳ Falta por acomodar</div>`:`<div class="price-total-box">🪙 $${fmtMoney(lineTot.total)}</div>`):''}
+      </div></div>`;
+  }).join('');
+  $('#orderDetailBody').innerHTML=`
+    ${photoHero}${photoInfo}${confirmBanner}${savedTranscribe}${transcribePanel}${priceHint}${incomplete}
+    <div class="order-detail-meta">
+      ${fmtDate(o.date)} · ${fmtTime12(o.time)} · ${shiftLabel(o.shift)} · Entrega: ${o.deliveryTime?fmtTime12(o.deliveryTime):'sin hora'}
+      ${o.description?'<br>📝 '+o.description:''}
+      ${rem?'<br>📄 Remisión Nº '+rem.numero:''}
+      <br>Estado: <b>${statusLabel(o.status)}</b>${isPorConfirmar?' (operarios y Compras aún no lo ven)':''}${o.operarioId?' · '+workerName(o.operarioId):''}
+    </div>
+    ${rows||'<p style="font-weight:700;color:var(--ink-soft);padding:8px 0">Sin productos listados aún.</p>'}`;
+  const showTotal=canPriceAdmin||o.status==='remisionado'||o.remisionNo;
+  const totalBar=$('#orderDetailTotalBar');
+  if(totalBar){
+    if(showTotal&&o.items?.length){
+      const pending=orderAcomodoPendingCount(o);
+      const realTotal=orderTotalAcomodado(o);
+      totalBar.classList.add('show');
+      totalBar.innerHTML=`<div><span class="total-lbl">Total acomodado</span>${pending?`<span class="total-sub">${pending} producto(s) falta por acomodar</span>`:''}</div><span class="total-amt" id="orderGrandTotal">$${fmtMoney(realTotal)}</span>`;
+    }else{
+      totalBar.classList.remove('show');
+      totalBar.innerHTML='';
+    }
+  }
+  const foot=$('#orderDetailFoot'); foot.innerHTML='';
+  const addBtn=(label,cls,fn,large)=>{
+    const b=document.createElement('button');
+    b.className='btn '+cls+(large?' btn-lg':''); b.innerHTML=label; b.onclick=fn; foot.appendChild(b);
+  };
+  const canConfirm=isAdmin&&isPorConfirmar&&!readOnly&&o.status!=='anulado'&&!needsTranscription;
+  if(canConfirm)
+    addBtn('✅ Confirmar pedido','green',()=>confirmOrderAdmin(id),true);
+  else if(isAdmin&&o.status==='pendiente'&&!readOnly)
+    addBtn('💾 Guardar precios','ghost',()=>saveOrderPrices(id));
+  if(canRemision) addBtn('📄 Crear remisión','green',()=>createRemision(id));
+  if(isAdmin) addBtn('💬 Chat con cliente','yellow',()=>openOrderChat(id));
+  if(rem||o.remisionNo) addBtn('📄 Ver remisión','yellow',()=>viewRemision(rem?.id,o.remisionNo||orderRemisionNo(o)));
+  if(isAdmin&&o.status==='acomodando'&&!readOnly) addBtn('🔄 Actualizar','ghost',()=>renderOrderDetailPage(id,readOnly));
+  if(isAdmin&&o.imagenOriginal&&!o.photoOnly) addBtn('📷 Foto','ghost',()=>showOrderPhotoById(o.id));
+  if(isAdmin&&o.photoOnly&&!o.items?.length) addBtn('✍️ Transcribir','green',()=>startOrderPhotoInterpret(id));
+  else if(isAdmin&&o.imagenOriginal&&o.items?.length) addBtn('✍️ Re-transcribir','ghost',()=>startOrderPhotoInterpret(id));
+  if(rem&&isAdmin&&!rem.enviadaAOperarioId) addBtn('📨 Enviar a operario','orange',()=>sendRemisionToWorker(rem.id));
+  if(isAdmin&&o.status!=='anulado'&&!readOnly) addBtn('Anular','ghost sm',()=>voidOrder(o.id));
+  if(typeof renderSubViewTopActions==='function') renderSubViewTopActions();
+  if(window.transcribingOrderId===id&&window.pendingItems?.length&&typeof renderInterpretInline==='function'){
+    renderInterpretInline('orderTranscribePanel');
+  }
+  syncOrderDetailScrollPad();
+}
+
+function saveOrderPrices(orderId){
+  const o=DB.orders.find(x=>x.id===orderId);
+  if(!o) return;
+  o.items.forEach((it,i)=>{
+    const up=parseOrderPriceInput($('#pu_'+i));
+    if(!isNaN(up)&&up>=0){
+      it.unitPrice=up;
+      it.priceUnit=$('#punit_'+i)?.value||it.u||'kilo';
+      it.total=calcPriceTotal(it);
+      setDailyPrice(it.p,up,it.priceUnit,o.date);
+    }
+  });
+  audit('Guardó precios del pedido',clientName(o.clientId));
+  flushSave().then(()=>{toast('Precios guardados ✅');renderOrderDetailPage(orderId);});
+}
+
+async function confirmOrderAdmin(orderId){
+  const o=DB.orders.find(x=>x.id===orderId);
+  if(!o||o.status!=='por_confirmar') return;
+  if(orderNeedsTranscription(o)){
+    toast('Transcribe y corrige el pedido por foto antes de confirmar');
+    return;
+  }
+  if(window.transcribingOrderId===orderId&&window.pendingItems?.length){
+    toast('Termina la transcripción antes de confirmar');
+    return;
+  }
+  if(o.transcribeDraft?.some(it=>!it.removed&&it.highlight!=='none'&&!it.resolved)){
+    toast('Corrige las palabras resaltadas en la transcripción');
+    return;
+  }
+  o.items.forEach((it,i)=>{
+    const note=$('#notaAdmin_'+i)?.value;
+    if(note!=null) it.notaAdmin=note.trim();
+    const up=parseOrderPriceInput($('#pu_'+i));
+    if(!isNaN(up)&&up>=0){
+      it.unitPrice=up;
+      it.priceUnit=$('#punit_'+i)?.value||it.u||'kilo';
+      if(it.u==='valor') resolveValorToKg(it,up);
+      it.total=calcPriceTotal(it);
+      setDailyPrice(it.p,up,it.priceUnit,o.date);
+    }
+  });
+  o.status='pendiente';
+  o.confirmadoEn=new Date().toISOString();
+  o.confirmadoPor=session?.name||'Admin';
+  audit('Confirmó pedido',clientName(o.clientId));
+  await flushSave();
+  toast('Pedido confirmado — visible para operarios y Compras ✅');
+  renderOrderDetailPage(orderId);
+  if(typeof updateAdminNavBadges==='function') updateAdminNavBadges();
+}
+
+function onOrderPriceInput(i,oid){
+  updatePriceRow(i,oid);
+  const o=DB.orders.find(x=>x.id===oid);
+  const it=o?.items[i];
+  if(it&&it.u==='valor'){
+    resolveValorToKg(it,it.unitPrice);
+    const hint=$('#prow_'+i+' .valor-hint');
+    if(hint) hint.textContent=it.qKg!=null?`✅ ${it.qKg} kg calculados (@ $${fmtMoney(it.unitPrice)}/kg)`:'Ingresa precio/kg abajo → se calculan los kilos automáticamente';
+  }
+  if(it&&it.unitPrice!=null) setDailyPrice(it.p,it.unitPrice,it.priceUnit,o.date);
+}
+
 function openOrderDetail(id,readOnly){
+  const o=DB.orders.find(x=>x.id===id); if(!o)return;
+  if(session.role==='admin'){
+    const active=$('.view.active');
+    if(active?.id==='v-remision') pushNavState({kind:'remision'});
+    else if(active?.id==='v-order-detail') pushNavState({kind:'order-detail',orderId:window._currentOrderDetailId||id,readOnly});
+    else if(active?.id==='v-chat') pushNavState({kind:'chat',conversacionId:window.activeChatId});
+    else pushNavState({kind:'admin-tab',tab:adminTab,view:active?.id||'v-admin'});
+    window._currentOrderDetailId=id;
+    renderOrderDetailPage(id,readOnly);
+    showView('v-order-detail');
+    return;
+  }
+  renderOrderDetailSheet(id,readOnly);
+}
+
+function renderOrderDetailSheet(id,readOnly){
   const o=DB.orders.find(x=>x.id===id); if(!o)return;
   normOrder(o);
   const c=DB.clients.find(x=>x.id===o.clientId)||{};
@@ -349,8 +578,8 @@ function openOrderDetail(id,readOnly){
   const canPrice=isAdmin&&o.status==='acomodado'&&!readOnly;
   const rem=DB.remisiones.find(r=>r.pedidoId===o.id);
   const photoBanner=o.photoOnly&&!o.items?.length?`
-    <div class="photo-only-banner">📷 <b>Pedido solo con foto.</b> ${isAdmin?'Verifica la imagen y transcribe los productos manualmente (botón abajo).':'Olga transcribirá este pedido.'}</div>
-    ${o.imagenOriginal?`<img src="${o.imagenOriginal}" style="max-width:100%;max-height:200px;object-fit:contain;border-radius:12px;border:2px solid var(--line);margin-bottom:10px;cursor:pointer" onclick="showOrderPhotoById('${o.id}')">`:''}`:'';
+    <div class="photo-info-banner">📷 <b>Pedido con foto.</b> Olga transcribirá este pedido.</div>
+    ${o.imagenOriginal?`<img src="${o.imagenOriginal}" class="photo-client-wide" style="margin-bottom:10px" onclick="showOrderPhotoById('${o.id}')">`:''}`:'';
   const rows=o.items.map((it,i)=>{
     const p=DB.products.find(x=>x.id===it.p)||{};
     const acom=it.w!=null?` · Acomodado: ${it.w} ${fmtUnit(it.wUnit||'kilo')}`:'';
@@ -371,13 +600,13 @@ function openOrderDetail(id,readOnly){
   const btns=[];
   if(canPrice) btns.push({label:'📄 Crear remisión',cls:'green',fn:()=>createRemision(id)});
   if(rem||o.remisionNo) btns.push({label:'📄 Ver remisión',cls:'yellow',fn:()=>viewRemision(rem?.id,o.remisionNo)});
-  if(o.imagenOriginal&&!o.photoOnly) btns.push({label:'📷 Foto original',cls:'ghost',fn:()=>showOrderPhoto(o)});
-  if(isAdmin&&o.photoOnly&&!o.items?.length) btns.push({label:'✍️ Transcribir pedido',cls:'green',fn:()=>{closeSheet();openManualOrderFromPhoto(o);}});
+  if(o.imagenOriginal&&!o.photoOnly) btns.push({label:'📷 Foto original',cls:'ghost',fn:()=>showOrderPhotoById(o.id)});
+  if(isAdmin&&o.photoOnly&&!o.items?.length) btns.push({label:'✍️ Transcribir pedido',cls:'green',fn:()=>{closeSheet();openOrderDetail(o.id);setTimeout(()=>startOrderPhotoInterpret(o.id),50);}});
   if(rem&&isAdmin&&!rem.enviadaAOperarioId) btns.push({label:'📨 Enviar a operario',cls:'orange',fn:()=>sendRemisionToWorker(rem.id)});
   if(isAdmin&&o.status!=='anulado'&&!readOnly) btns.push({label:'🗑️ Anular',cls:'orange',fn:()=>voidOrder(o.id)});
   openSheet(`${readOnly?'👁️ ':''}📦 Pedido — ${c.name}`,`
     <div style="font-size:13px;font-weight:700;color:var(--ink-soft);margin-bottom:10px">
-      ${fmtDate(o.date)} · ${o.time} · ${shiftLabel(o.shift)} · Entrega: ${o.deliveryTime||'—'}
+      ${fmtDate(o.date)} · ${fmtTime12(o.time)} · ${shiftLabel(o.shift)} · Entrega: ${o.deliveryTime?fmtTime12(o.deliveryTime):'sin hora'}
       ${o.description?'<br>📝 '+o.description:''}
       ${rem?'<br>📄 Remisión Nº '+rem.numero:''}
       <br>Estado: <b>${statusLabel(o.status)}</b>${o.operarioId?' · '+workerName(o.operarioId):''}
@@ -387,29 +616,57 @@ function openOrderDetail(id,readOnly){
     btns);
 }
 
+function formatOrderPriceBlur(i){
+  const inp=$('#pu_'+i);
+  if(!inp) return;
+  const n=parseOrderPriceInput(inp);
+  if(!isNaN(n)&&n>=0) inp.value=formatOrderPriceValue(n);
+}
+
 function updatePriceRow(i,oid){
   const o=DB.orders.find(x=>x.id===oid); if(!o)return;
   const it=o.items[i];
-  const up=parseFloat($('#pu_'+i)?.value);
+  const up=parseOrderPriceInput($('#pu_'+i));
   if(!isNaN(up)&&up>=0){
     it.unitPrice=up;
     it.priceUnit=$('#punit_'+i)?.value||'kilo';
+    if(it.u==='valor') resolveValorToKg(it,up);
     it.total=calcPriceTotal(it);
   }
   const row=$('#prow_'+i);
   let box=row?.querySelector('.price-total-box');
   if(it.unitPrice!=null){
+    const lineTot=itemLineTotalDisplay(it);
     if(!box&&row){box=document.createElement('div');box.className='price-total-box';row.querySelector('.rn').appendChild(box);}
-    if(box) box.innerHTML='🪙 $'+fmtMoney(it.total);
+    if(box){
+      box.className='price-total-box'+(lineTot?.pending?' pending':'');
+      box.innerHTML=lineTot?.pending?'⏳ Falta por acomodar':('🪙 $'+fmtMoney(lineTot.total));
+    }
+  }
+  if(it.u==='valor'&&it.qKg!=null){
+    const hint=row?.querySelector('.valor-hint');
+    if(hint) hint.textContent=`✅ ${it.qKg} kg calculados (@ $${fmtMoney(it.unitPrice)}/kg)`;
   }
   const gt=$('#orderGrandTotal');
-  if(gt) gt.textContent='Total: $'+fmtMoney(orderTotal(o));
+  if(gt) gt.textContent='$'+fmtMoney(orderTotalAcomodado(o));
+  const pending=orderAcomodoPendingCount(o);
+  const sub=$('.order-detail-total-bar .total-sub');
+  if(sub) sub.textContent=pending?`${pending} producto(s) falta por acomodar`:'';
+  else if(pending){
+    const lbl=$('.order-detail-total-bar .total-lbl')?.parentElement;
+    if(lbl&&!lbl.querySelector('.total-sub')){
+      const sp=document.createElement('span');
+      sp.className='total-sub';
+      sp.textContent=`${pending} producto(s) falta por acomodar`;
+      lbl.appendChild(sp);
+    }
+  }
 }
 
 async function createRemision(id){
   const o=DB.orders.find(x=>x.id===id); if(!o)return;
   o.items.forEach((it,i)=>{
-    const up=parseFloat($('#pu_'+i)?.value);
+    const up=parseOrderPriceInput($('#pu_'+i));
     if(!isNaN(up)&&up>=0){
       it.unitPrice=up; it.priceUnit=$('#punit_'+i)?.value||'kilo';
       it.total=calcPriceTotal(it);
@@ -431,8 +688,12 @@ async function createRemision(id){
   o.pricedAt=new Date().toISOString();
   audit('Creó remisión','Nº '+num+' · '+clientName(o.clientId));
   await flushSave();
-  closeSheet();
-  adminNav(adminTab);
+  if($('#v-order-detail')?.classList.contains('active')){
+    renderOrderDetailPage(id);
+  }else{
+    closeSheet();
+    adminNav(adminTab);
+  }
   viewRemision(rem.id);
   toast('Remisión Nº '+num+' creada ✅');
 }
@@ -448,22 +709,61 @@ function viewRemision(remId,legacyNo){
     num=legacyNo||o?.remisionNo;
   }
   if(!o){toast('Remisión no encontrada');return;}
-  const html=remisionHTML([{...o,items:rem?.items||o.items,remisionNo:num}],'',num);
-  openSheet('📄 Remisión Nº '+num,`
-    <div id="remView">${html}</div>
-    <div class="no-print-rem" style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-      <button class="btn yellow sm" onclick="printRemisionView()">🖨️ Imprimir / PDF</button>
-      <button class="btn ghost sm" onclick="openOrderDetail('${o.id}',true)">📦 Ver pedido</button>
-    </div>`,[]);
+  const active=$('.view.active');
+  if(active?.id==='v-order-detail'){
+    pushNavState({kind:'order-detail',orderId:window._currentOrderDetailId||o.id,readOnly:false});
+  }else if(active?.id==='v-chat'){
+    pushNavState({kind:'chat',conversacionId:window.activeChatId});
+  }else{
+    pushNavState({kind:'admin-tab',tab:adminTab,view:active?.id||'v-admin'});
+  }
+  window.currentRemisionView={remId:rem?.id,orderId:o.id,num,html:remisionHTML([{...o,items:rem?.items||o.items,remisionNo:num}],'',num)};
+  renderRemisionPage();
+  showView('v-remision');
+}
+
+function renderRemisionPage(){
+  const v=window.currentRemisionView; if(!v)return;
+  $('#remisionTitle').textContent='Remisión Nº '+v.num;
+  $('#remisionSub').textContent=clientName(DB.orders.find(x=>x.id===v.orderId)?.clientId||'');
+  $('#remisionBody').innerHTML=(typeof orderIsIncomplete==='function'&&orderIsIncomplete(DB.orders.find(x=>x.id===v.orderId))?incompleteWidgetHTML():'')+v.html;
+  const foot=$('#remisionFoot'); foot.innerHTML='';
+  const printBtn=document.createElement('button');
+  printBtn.className='btn yellow'; printBtn.textContent='🖨️ Imprimir / PDF';
+  printBtn.onclick=printRemisionView;
+  foot.appendChild(printBtn);
+  if(v.orderId){
+    const see=document.createElement('button');
+    see.className='btn ghost'; see.textContent='📦 Ver pedido';
+    see.onclick=()=>{
+      pushNavState({kind:'remision'});
+      window._currentOrderDetailId=v.orderId;
+      renderOrderDetailPage(v.orderId,true);
+      showView('v-order-detail');
+    };
+    foot.appendChild(see);
+  }
 }
 
 function printRemisionView(){
-  const h=$('#remView')?.innerHTML;
-  if(!h)return;
-  $('#printArea').innerHTML=h;
-  $('#printArea').style.display='block';
-  window.print();
-  setTimeout(()=>{$('#printArea').style.display='none';},500);
+  const v=window.currentRemisionView;
+  const o=v?.orderId?DB.orders.find(x=>x.id===v.orderId):null;
+  const doPrint=()=>{
+    const h=v?.html||$('#remisionBody')?.innerHTML;
+    if(!h)return;
+    $('#printArea').innerHTML=h;
+    $('#printArea').style.display='block';
+    window.print();
+    setTimeout(()=>{$('#printArea').style.display='none';},500);
+  };
+  if(o&&typeof orderIsIncomplete==='function'&&orderIsIncomplete(o)){
+    openSheet('Remisión incompleta',`
+      <p style="font-weight:700;line-height:1.5;margin-bottom:8px">Este pedido aún no tiene todos los precios unitarios o totales.</p>
+      <p style="font-weight:700;color:var(--ink-soft);line-height:1.5">¿Deseas imprimir o exportar a PDF de todos modos?</p>`,
+      [{label:'🖨️ Imprimir igualmente',cls:'orange',fn:()=>{closeSheet();doPrint();}}]);
+    return;
+  }
+  doPrint();
 }
 
 function sendRemisionToWorker(remId){
@@ -483,16 +783,25 @@ function sendRemisionToWorker(remId){
 
 /* ---------- admin pedidos con filtros ---------- */
 function renderOrders(){
-  const list=DB.orders.filter(o=>o.date===ordersDate&&o.status!=='anulado').sort((a,b)=>b.time.localeCompare(a.time));
-  const clients=[...new Set(list.map(o=>o.clientId))];
+  const porConfirmar=DB.orders.filter(o=>o.date===ordersDate&&o.status==='por_confirmar').sort(sortByDeliveryTime);
+  const list=DB.orders.filter(o=>o.date===ordersDate&&o.status!=='anulado'&&o.status!=='por_confirmar').sort(sortByDeliveryTime);
+  const clients=[...new Set([...porConfirmar,...list].map(o=>o.clientId))];
   const chips=[`<button class="filter-chip ${adminClientFilter==='all'?'on':''}" onclick="adminClientFilter='all';renderOrders()">Todos</button>`]
     .concat(clients.map(cid=>{
       const c=DB.clients.find(x=>x.id===cid)||{};
-      return `<button class="filter-chip ${adminClientFilter===cid?'on':''}" onclick="adminClientFilter='${cid}';renderOrders()">${c.name?.split(' ')[0]||'—'}</button>`;
+      return `<button class="filter-chip ${adminClientFilter===cid?'on':''}" onclick="adminClientFilter='${cid}';renderOrders()" title="${c.name||''}">${c.name||'Cliente'}</button>`;
     })).join('');
+  const filteredPor=adminClientFilter==='all'?porConfirmar:porConfirmar.filter(o=>o.clientId===adminClientFilter);
   const filtered=adminClientFilter==='all'?list:list.filter(o=>o.clientId===adminClientFilter);
+  const porSection=filteredPor.length?`
+    <div class="card pop" style="padding:12px;margin-bottom:12px;border:2px solid var(--orange)">
+      <b class="display" style="font-size:16px">📋 ${filteredPor.length} por confirmar</b>
+      <span style="font-size:12px;color:var(--ink-soft);font-weight:700;display:block;margin:6px 0 10px">Revisa y confirma antes de que sumen en Compras</span>
+      ${filteredPor.map(o=>orderRowHTML(o)).join('')}
+    </div>`:'';
   $('#adminBody').innerHTML=`
     ${ORDER_GUIDE}
+    ${porSection}
     <div class="card pop" style="padding:12px;margin-bottom:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <b class="display" style="font-size:17px">📦 Pedidos del día</b><div class="spacer"></div>
       <input type="date" value="${ordersDate}" onchange="ordersDate=this.value;renderOrders()" style="border:2px solid var(--line);border-radius:11px;padding:8px;font-weight:700">
@@ -505,25 +814,28 @@ function renderOrders(){
 
 /* ---------- dashboard rediseñado ---------- */
 function renderDash(){
-  const t=ordersOf(todayStr());
+  const porConfirmar=DB.orders.filter(o=>o.date===todayStr()&&o.status==='por_confirmar').sort(sortByDeliveryTime);
+  const t=ordersOf(todayStr()).filter(o=>o.status!=='por_confirmar');
   const acomodados=t.filter(o=>['acomodado','remisionado','cerrado','pesado','facturado'].includes(o.status)).length;
   const total=t.length||1;
   const pct=Math.round((acomodados/total)*100);
-  const valorParcial=t.filter(o=>['acomodado','remisionado','facturado'].includes(o.status)).reduce((s,o)=>s+orderTotal(o),0);
+  const ingresosAcomodados=t.filter(o=>['acomodado','remisionado','cerrado','facturado'].includes(o.status)).reduce((s,o)=>s+orderTotal(o),0);
+  const ingresosRemisionados=t.filter(o=>['remisionado','cerrado','facturado'].includes(o.status)).reduce((s,o)=>s+orderTotal(o),0);
+  const valorParcial=ingresosAcomodados;
   const tiempos=t.filter(o=>o.acomodoIniciadoEn&&o.acomodoFinalizadoEn).map(o=>(new Date(o.acomodoFinalizadoEn)-new Date(o.acomodoIniciadoEn))/60000);
   const avgMin=tiempos.length?Math.round(tiempos.reduce((a,b)=>a+b,0)/tiempos.length):0;
   const clientsIn=new Set(t.map(o=>o.clientId)).size;
   const pendClients=DB.clients.length-clientsIn;
-  const title=`Pedidos para despachar ${cutoffPassed()?'mañana':'hoy'} ${dispatchDayLabel()}`;
-  const dashOrders=t.sort((a,b)=>b.time.localeCompare(a.time));
+  const title=`Pedidos para despachar hoy ${dispatchDayLabel()}`;
+  const dashOrders=t.sort(sortByDeliveryTime);
   const chips=[`<button class="filter-chip ${adminClientFilter==='all'?'on':''}" onclick="adminClientFilter='all';renderDash()">Todos</button>`]
     .concat([...new Set(dashOrders.map(o=>o.clientId))].map(cid=>{
       const c=DB.clients.find(x=>x.id===cid)||{};
-      return `<button class="filter-chip ${adminClientFilter===cid?'on':''}" onclick="adminClientFilter='${cid}';renderDash()">${c.name?.split(' ')[0]||'—'}</button>`;
+      return `<button class="filter-chip ${adminClientFilter===cid?'on':''}" onclick="adminClientFilter='${cid}';renderDash()" title="${c.name||''}">${c.name||'Cliente'}</button>`;
     })).join('');
   const filtered=adminClientFilter==='all'?dashOrders:dashOrders.filter(o=>o.clientId===adminClientFilter);
   $('#adminBody').innerHTML=`
-    <div class="dash-grid">
+    <div class="dash-grid dash-grid-5">
       <div class="dash-ring card pop">
         <svg viewBox="0 0 120 120" class="progress-ring">
           <circle cx="60" cy="60" r="52" fill="none" stroke="#edf0f3" stroke-width="12"/>
@@ -532,13 +844,22 @@ function renderDash(){
         </svg>
         <div class="ring-label"><b>${acomodados}</b> de <b>${t.length}</b><span>acomodados hoy</span></div>
       </div>
-      <div class="dash-stat card pop y"><div class="ds-num">$${fmtMoney(valorParcial)}</div><div class="ds-lbl">Valor del día <small>(parcial)</small></div></div>
+      <div class="dash-stat card pop y"><div class="ds-num">$${fmtMoney(valorParcial)}</div><div class="ds-lbl">Ingresos acomodados <small>(con precios)</small></div></div>
+      <div class="dash-stat card pop p"><div class="ds-num">$${fmtMoney(ingresosRemisionados)}</div><div class="ds-lbl">Ingresos remisionados</div></div>
       <div class="dash-stat card pop o"><div class="ds-num">${avgMin||'—'}<small> min</small></div><div class="ds-lbl">Tiempo promedio acomodo</div></div>
       <div class="dash-stat card pop g"><div class="ds-num">${pendClients}</div><div class="ds-lbl">Clientes sin pedir hoy</div></div>
     </div>
     <div class="card pop" style="padding:14px;margin-top:12px;animation-delay:.2s">
-      <b class="display">⏰ Hora de corte: ${DB.config.cutoff}</b>
+      <b class="display">⏰ Hora de corte: ${typeof fmtCutoffLabel==='function'?fmtCutoffLabel():fmtTime12(DB.config.cutoff)}</b>
+      <span style="font-size:12px;color:var(--ink-soft);font-weight:700;display:block;margin-top:4px">Pedidos 2 pm – medianoche → compra madrugada 3–6 am</span>
     </div>
+    ${porConfirmar.length?`<div class="card pop" style="padding:12px;margin-top:12px;border:2px solid var(--orange)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <b class="display">📋 ${porConfirmar.length} pedido(s) por confirmar</b>
+        <span class="chip exc">Revisar</span>
+      </div>
+      ${porConfirmar.map(o=>orderCardHTML(o)).join('')}
+    </div>`:''}
     <div style="display:grid;gap:10px;grid-template-columns:1fr 1fr;margin-top:12px">
       <button class="btn green" onclick="adminNav('consol')">🧮 Ver lista de compra</button>
       <button class="btn orange" onclick="openManualOrder()">✍️ Registrar pedido</button>
@@ -559,7 +880,7 @@ function voidOrder(id){
       if($('#voidConfirm').value!=='ANULAR'){toast('Debes escribir ANULAR');return;}
       o.status='anulado';
       audit('Anuló pedido',clientName(o.clientId)+' · '+o.date+' '+o.time);
-      flushSave(); closeSheet(); adminNav(adminTab); toast('Pedido anulado');
+      flushSave(); goBackNav(); adminNav(adminTab); toast('Pedido anulado');
     }}]);
   setTimeout(()=>{
     const btn=$('#sheetFoot')?.querySelector('.btn.orange');
@@ -579,3 +900,29 @@ window._renderOrdersImpl=renderOrders;
 window._voidOrderImpl=voidOrder;
 window._openOrderDetail=openOrderDetail;
 window._orderRowHTML=orderRowHTML;
+window.closeWorkerAcomodo=closeWorkerAcomodo;
+window.openWorkerAcomodoPage=openWorkerAcomodoPage;
+window.renderWorkerAcomodoPage=renderWorkerAcomodoPage;
+window.saveOrderPrices=saveOrderPrices;
+window.formatOrderPriceBlur=formatOrderPriceBlur;
+window.ordersVisibleToWorkers=ordersVisibleToWorkers;
+window.sortByDeliveryTime=sortByDeliveryTime;
+
+window.addEventListener('resize',()=>{
+  if($('#v-order-detail')?.classList.contains('active')) syncOrderDetailScrollPad();
+});
+
+function updateAdminNavBadges(){
+  if(session?.role!=='admin') return;
+  const n=DB.orders.filter(o=>o.status==='por_confirmar'&&o.date===todayStr()).length;
+  $$('[data-anav]').forEach(b=>{
+    let badge=b.querySelector('.nav-badge');
+    if(b.dataset.anav==='dash'||b.dataset.anav==='orders'){
+      if(n){
+        if(!badge){badge=document.createElement('span');badge.className='nav-badge';b.appendChild(badge);}
+        badge.textContent=n;
+      }else if(badge) badge.remove();
+    }
+  });
+}
+window.updateAdminNavBadges=updateAdminNavBadges;
