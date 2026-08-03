@@ -57,6 +57,7 @@ function workerName(id){const w=(DB.workers||[]).find(x=>x.id===id);return w?w.n
 function productName(pid){const p=DB.products.find(x=>x.id===pid);return p?p.name:'—';}
 
 function orderPreview(o,max=3){
+  if(o.photoOnly&&!o.items?.length) return '📷 Pedido por foto — pendiente de transcribir';
   const names=(o.items||[]).map(it=>productName(it.p));
   const shown=names.slice(0,max).join(', ');
   return shown+(names.length>max?` +${names.length-max} más`:'');
@@ -347,6 +348,9 @@ function openOrderDetail(id,readOnly){
   const isAdmin=session.role==='admin';
   const canPrice=isAdmin&&o.status==='acomodado'&&!readOnly;
   const rem=DB.remisiones.find(r=>r.pedidoId===o.id);
+  const photoBanner=o.photoOnly&&!o.items?.length?`
+    <div class="photo-only-banner">📷 <b>Pedido solo con foto.</b> ${isAdmin?'Verifica la imagen y transcribe los productos manualmente (botón abajo).':'Olga transcribirá este pedido.'}</div>
+    ${o.imagenOriginal?`<img src="${o.imagenOriginal}" style="max-width:100%;max-height:200px;object-fit:contain;border-radius:12px;border:2px solid var(--line);margin-bottom:10px;cursor:pointer" onclick="showOrderPhotoById('${o.id}')">`:''}`:'';
   const rows=o.items.map((it,i)=>{
     const p=DB.products.find(x=>x.id===it.p)||{};
     const acom=it.w!=null?` · Acomodado: ${it.w} ${fmtUnit(it.wUnit||'kilo')}`:'';
@@ -367,7 +371,8 @@ function openOrderDetail(id,readOnly){
   const btns=[];
   if(canPrice) btns.push({label:'📄 Crear remisión',cls:'green',fn:()=>createRemision(id)});
   if(rem||o.remisionNo) btns.push({label:'📄 Ver remisión',cls:'yellow',fn:()=>viewRemision(rem?.id,o.remisionNo)});
-  if(o.imagenOriginal) btns.push({label:'📷 Foto original',cls:'ghost',fn:()=>showOrderPhoto(o)});
+  if(o.imagenOriginal&&!o.photoOnly) btns.push({label:'📷 Foto original',cls:'ghost',fn:()=>showOrderPhoto(o)});
+  if(isAdmin&&o.photoOnly&&!o.items?.length) btns.push({label:'✍️ Transcribir pedido',cls:'green',fn:()=>{closeSheet();openManualOrderFromPhoto(o);}});
   if(rem&&isAdmin&&!rem.enviadaAOperarioId) btns.push({label:'📨 Enviar a operario',cls:'orange',fn:()=>sendRemisionToWorker(rem.id)});
   if(isAdmin&&o.status!=='anulado'&&!readOnly) btns.push({label:'🗑️ Anular',cls:'orange',fn:()=>voidOrder(o.id)});
   openSheet(`${readOnly?'👁️ ':''}📦 Pedido — ${c.name}`,`
@@ -376,7 +381,7 @@ function openOrderDetail(id,readOnly){
       ${o.description?'<br>📝 '+o.description:''}
       ${rem?'<br>📄 Remisión Nº '+rem.numero:''}
       <br>Estado: <b>${statusLabel(o.status)}</b>${o.operarioId?' · '+workerName(o.operarioId):''}
-    </div>${rows}
+    </div>${photoBanner}${rows||'<p style="font-weight:700;color:var(--ink-soft);padding:8px 0">Sin productos listados aún.</p>'}
     ${canPrice?`<div id="orderGrandTotal" style="text-align:right;font-family:Fredoka;font-size:22px;font-weight:700;color:var(--green);margin-top:10px">Total: $${fmtMoney(orderTotal(o))}</div>`:''}
     ${o.status==='remisionado'||o.remisionNo?`<div style="text-align:right;font-family:Fredoka;font-size:22px;font-weight:700;color:var(--green);margin-top:10px">Total: $${fmtMoney(orderTotal(o))}</div>`:''}`,
     btns);
