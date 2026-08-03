@@ -104,7 +104,8 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
 .mode-btn:active{transform:translateY(3px);box-shadow:0 0 0 #e6eaee}
 
 .prod-list{flex:1;min-height:0;display:flex;flex-direction:column;border:2px solid var(--line);
-  border-radius:var(--r-md);background:#fff;overflow:hidden;box-shadow:var(--shadow)}
+  border-radius:var(--r-md);background:#fff;overflow-y:auto;overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;box-shadow:var(--shadow);scrollbar-width:thin}
 .prod-row{display:flex;align-items:center;gap:8px;padding:4px 8px 4px 6px;min-height:52px;
   border-bottom:1px solid var(--line);background:#fff;transition:background .12s;position:relative}
 .prod-row:last-child{border-bottom:none}
@@ -144,6 +145,12 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
 #v-order .topbar{padding-bottom:8px}
 #v-order .topbar h1{font-size:20px}
 #v-order .topbar .sub{font-size:12px}
+
+/* ---------- interpretación / vocabulario ---------- */
+.photo-review-block{margin-bottom:14px;text-align:center}
+.photo-review-img{max-width:100%;max-height:min(42dvh,320px);object-fit:contain;border-radius:14px;border:2px solid var(--line);background:#fafbfc}
+.hl-word{display:inline;background:rgba(255,122,31,.3);border-radius:10px;padding:2px 8px;margin:0 2px;cursor:pointer;font-weight:800}
+.interp-line{display:block;margin-top:3px;font-size:12px;color:var(--ink-soft);font-weight:700;line-height:1.45}
 @media(hover:hover){
   .mode-btn:hover{transform:translateY(-2px)}
   .mode-btn.voice:hover{border-color:var(--orange);box-shadow:0 5px 0 var(--orange-soft)}
@@ -370,11 +377,6 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
         <button class="mode-btn photo" onclick="openPhoto()"><span class="ic">📸</span><span>Pedir por<br><b>foto</b></span></button>
       </div>
       <div class="prod-list" id="prodGrid"></div>
-      <div class="pager">
-        <button class="pg-btn" id="pgPrev" onclick="changePage(-1)">◀</button>
-        <div class="dots" id="pgDots"></div>
-        <button class="pg-btn" id="pgNext" onclick="changePage(1)">▶</button>
-      </div>
       <div class="cartbar">
         <button class="btn green block" id="btnSend" onclick="openCartReview()" disabled>
           🛒 Realizar pedido <span class="cart-count" id="cartCount" style="display:none">0</span>
@@ -434,6 +436,7 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
       <button class="nav-btn" data-anav="catalog" onclick="adminNav('catalog')"><span class="ni">🥬</span>Catálogo</button>
       <button class="nav-btn" data-anav="clients" onclick="adminNav('clients')"><span class="ni">👥</span>Clientes</button>
       <button class="nav-btn" data-anav="workers" onclick="adminNav('workers')"><span class="ni">⚖️</span>Operarios</button>
+      <button class="nav-btn" data-anav="vocab" onclick="adminNav('vocab')"><span class="ni">📚</span>Vocab.</button>
       <button class="nav-btn" data-anav="more" onclick="adminNav('more')"><span class="ni">⚙️</span>Más</button>
     </nav>
   </section>
@@ -516,7 +519,7 @@ let DB=null, dbUpdatedAt=null, syncTimer=null, saveT=null, saving=false;
 const API_DB='/api/db';
 
 function defaultDB(){
-  return {products:SEED_PRODUCTS,clients:SEED_CLIENTS,workers:SEED_WORKERS,orders:seedOrders(),purchases:[],audit:[],config:{cutoff:'16:00',remisionNext:12588},admin:{...SEED_ADMIN},invitations:[],notifications:[],remisiones:[]};
+  return {products:SEED_PRODUCTS,clients:SEED_CLIENTS,workers:SEED_WORKERS,orders:seedOrders(),purchases:[],audit:[],config:{cutoff:'16:00',remisionNext:12588},admin:{...SEED_ADMIN},invitations:[],notifications:[],remisiones:[],vocabulario:[],suscripciones:[]};
 }
 
 async function loadDB(force=false){
@@ -582,6 +585,8 @@ function migrateDB(){
   if(!DB.invitations) DB.invitations=[];
   if(!DB.notifications) DB.notifications=[];
   if(!DB.remisiones) DB.remisiones=[];
+  if(!DB.vocabulario) DB.vocabulario=[];
+  if(!DB.suscripciones) DB.suscripciones=[];
   if(!DB.config.remisionNext) DB.config.remisionNext=12588;
   const hasOldCatalog=DB.products.some(p=>/^p\d+$/.test(p.id));
   if(hasOldCatalog||DB.products.length<40){
@@ -605,7 +610,7 @@ function migrateDB(){
       if(w) o.operarioId=w.id;
     }
     if(o.weighedAt&&!o.acomodoFinalizadoEn) o.acomodoFinalizadoEn=o.weighedAt;
-    o.items=(o.items||[]).map(it=>({p:it.p,q:it.q,u:it.u||'kilo',w:it.w??null,wUnit:it.wUnit||null,unitPrice:it.unitPrice??null,priceUnit:it.priceUnit||it.u||'kilo',total:it.total??null}));
+    o.items=(o.items||[]).map(it=>({p:it.p,q:it.q,u:it.u||'kilo',uCliente:it.uCliente||null,equivNote:it.equivNote||'',w:it.w??null,wUnit:it.wUnit||null,unitPrice:it.unitPrice??null,priceUnit:it.priceUnit||it.u||'kilo',total:it.total??null}));
   });
 }
 function audit(action,detail){
@@ -659,7 +664,7 @@ function doLogin(){
   }
   const client=DB.clients.find(c=>c.username?.toLowerCase()===user&&c.password===pass);
   if(client){
-    session={role:'client',id:client.id,name:client.name}; startSync(); cart={}; page=0; nav('order'); return;
+    session={role:'client',id:client.id,name:client.name}; startSync(); cart={}; nav('order'); return;
   }
   $('#loginPass').value='';
   $('#loginPass').closest('.field').classList.add('wiggle');
@@ -682,31 +687,21 @@ $('#overlay').addEventListener('click',e=>{if(e.target.id==='overlay')closeSheet
 /* ============================================================
    VISTA CLIENTE — armado de pedido
    ============================================================ */
-let cart={}, page=0;
+let cart={};
 function activeProducts(){return DB.products.filter(p=>p.active);}
 function sortedForClient(cid){
   const freq={};
-  DB.orders.filter(o=>o.clientId===cid&&o.status!=='anulado').forEach(o=>o.items.forEach(it=>freq[it.p]=(freq[it.p]||0)+1));
+  DB.orders.filter(o=>o.clientId===cid&&o.status!=='anulado').forEach(o=>o.items.forEach(it=>freq[it.p]=1));
   return activeProducts().slice().sort((a,b)=>(freq[b.id]||0)-(freq[a.id]||0));
-}
-function pageSize(){
-  const h=window.innerHeight||700;
-  if(h<700) return 11;
-  if(window.innerWidth>=1024) return 16;
-  if(window.innerWidth>=760) return 14;
-  return 12;
 }
 function renderClientOrder(){
   const c=DB.clients.find(x=>x.id===session.id);
   $('#helloClient').textContent='¡Hola, '+c.name.split(' ')[0]+'! 👋';
   $('#orderDateLbl').textContent='Pedido para hoy · '+fmtDate(todayStr())+' · corte '+DB.config.cutoff;
   const list=sortedForClient(session.id);
-  const ps=pageSize(), pages=Math.max(1,Math.ceil(list.length/ps));
-  page=Math.min(page,pages-1);
-  const slice=list.slice(page*ps,page*ps+ps);
   const freq={}; DB.orders.filter(o=>o.clientId===session.id).forEach(o=>o.items.forEach(it=>freq[it.p]=1));
   const grid=$('#prodGrid'); grid.innerHTML='';
-  slice.forEach((p,i)=>{
+  list.forEach((p,i)=>{
     const defU=p.unidad_sugerida||'kilo';
     const citem=cart[p.id]||{q:0,u:defU};
     const q=citem.q||0;
@@ -714,12 +709,12 @@ function renderClientOrder(){
     el.className='prod-row pop'+(q>0?' selected':'');
     el.style.setProperty('--row-tint',p.tint||'#E8F8EE');
     el.dataset.pid=p.id;
-    el.style.animationDelay=(i*25)+'ms';
+    el.style.animationDelay=Math.min(i*18,400)+'ms';
     const em=p.emoji||'🥬';
     const thumb=p.img
       ?`<img src="${p.img}" alt="" loading="lazy" onerror="this.parentElement.textContent='${em}'">`
       :em;
-    const freqBadge=page===0&&freq[p.id]?'<span class="badge-freq" title="Frecuente">⭐</span>':'';
+    const freqBadge=freq[p.id]?'<span class="badge-freq" title="Frecuente">⭐</span>':'';
     el.innerHTML=`
       <div class="prod-thumb">${thumb}</div>
       <div class="prod-meta">
@@ -733,12 +728,8 @@ function renderClientOrder(){
       </div>`;
     grid.appendChild(el);
   });
-  const dots=$('#pgDots'); dots.innerHTML='';
-  for(let i=0;i<pages;i++){const d=document.createElement('div');d.className='dot'+(i===page?' on':'');dots.appendChild(d);}
-  $('#pgPrev').disabled=page===0; $('#pgNext').disabled=page>=pages-1;
   updateCartBar();
 }
-function changePage(d){page+=d;renderClientOrder();}
 function setCartUnit(pid,u){if(!cart[pid]){const p=DB.products.find(x=>x.id===pid);cart[pid]={q:0,u:p?.unidad_sugerida||'kilo'};}cart[pid].u=u;}
 function stepQty(pid,d,btn){
   const p=DB.products.find(x=>x.id===pid);
@@ -854,7 +845,7 @@ function openPhoto(){
       <div style="font-weight:800;color:var(--ink-soft);text-align:center">Tómale foto a la hoja donde escribiste tu pedido.<br>Nosotros leemos tu letra ✍️</div>
       <input type="file" id="photoIn" accept="image/*" capture="environment" style="display:none" onchange="photoPicked(this)">
       <button class="btn yellow block" onclick="document.getElementById('photoIn').click()">📷 Tomar o elegir foto</button>
-      <div class="hints">💡 <b>Consejo:</b> escribe una línea por producto, con cantidad y unidad. Ej.: “2 bultos papa pastusa”.</div>
+      <div class="hints">💡 <b>Consejo:</b> usa la hoja con columnas <b>Producto</b> y <b>Cantidad</b> para mejor lectura, o escribe una línea por producto.</div>
       <div id="photoPrev"></div>
     </div>`,[]);
 }
@@ -872,42 +863,9 @@ function photoPicked(inp){
   img.src=URL.createObjectURL(f);
 }
 
-/* ============================================================
-   INTERPRETACIÓN CON IA (voz y foto) + verificación
-   ============================================================ */
-async function interpretOrder(input,channel){
-  openSheet(channel==='voz'?'🎙️ Interpretando tu pedido':'📸 Leyendo tu pedido',
-    `<div style="text-align:center;padding:16px 0"><div class="spin"></div><b class="display">Un momentico…</b><br><span style="color:var(--ink-soft);font-weight:700">Estamos organizando tu pedido</span></div>`,[]);
-  const catalog=activeProducts().map(p=>({id:p.id,nombre:p.name}));
-  const instr=`Eres el intérprete de pedidos de una comercializadora de frutas y verduras en Colombia (estilo WhatsApp: "5 kilos limón", "Piña 40000" donde el número puede ser pesos COP o cantidad).
-Catálogo disponible (SOLO puedes hacer match con estos productos): ${JSON.stringify(catalog)}
-Analiza el pedido y devuelve SOLO JSON válido sin markdown:
-{"items":[{"texto":"literal","productId":"id o null","cantidad":numero,"unidad":"kilo|gramo|unidad","confianza":0.0-1.0}]}
-Reglas: "5 kilos"/"5 kl"→kilo; gramos→gramo; "2 unidades"/"1 rollo"→unidad; montos como "40000" sin unidad pueden ser pesos aproximados→estimar cantidad en kilo; cantidades en palabras ("dos"→2); sin cantidad usa 1.`;
-  let userContent;
-  if(input.imageB64){
-    userContent=[
-      {type:'text',text:instr+'\nLa imagen contiene el pedido escrito a mano. Transcríbelo e interprétalo.'},
-      {type:'image_url',image_url:{url:'data:image/jpeg;base64,'+input.imageB64}},
-    ];
-  }else{
-    userContent=instr+'\nPedido dictado por el cliente: "'+input.text+'"';
-  }
-  let items=null;
-  try{
-    const txt=await callOpenAI([{role:'user',content:userContent}]);
-    items=JSON.parse(txt.replace(/```json|```/g,'').trim()).items;
-  }catch(e){
-    if(input.text)items=localParse(input.text);
-  }
-  if(!items||!items.length){
-    openSheet('😕 No entendimos el pedido',`<div class="empty" style="padding:10px"><span class="ee">🤔</span><b class="display">Intenta de nuevo</b><span>Nombra cantidad, unidad y producto. Ej.: “2 bultos de papa pastusa”.</span></div>`,
-      [{label:'Reintentar',cls:'orange',fn:()=>channel==='voz'?openVoice():openPhoto()}]);
-    return;
-  }
-  showInterpreted(items,channel);
-}
-/* respaldo local sin IA */
+/* interpretOrder, showInterpreted → interpret.js */
+
+/* respaldo local sin IA (voz) */
 function localParse(text){
   const nums={'un':1,'una':1,'uno':1,'dos':2,'tres':3,'cuatro':4,'cinco':5,'seis':6,'siete':7,'ocho':8,'nueve':9,'diez':10,'media':0.5};
   const norm=s=>s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
@@ -924,45 +882,6 @@ function localParse(text){
     return {texto:seg,productId:best?best.id:null,cantidad:q,unidad:seg.includes('gram')?'gramo':seg.includes('und')||seg.includes('unidad')||seg.includes('rollo')?'unidad':'kilo',confianza:best?(score>=1?0.97:0.7):0.2};
   }).filter(x=>x.texto);
 }
-function showInterpreted(items,channel){
-  const anyWarn=items.some(it=>!it.productId||it.confianza<0.9);
-  const opts=activeProducts().map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
-  const uopts=UNITS||[{id:'kilo',short:'kg'},{id:'gramo',short:'g'},{id:'unidad',short:'und'}];
-  const rows=items.map((it,i)=>{
-    const p=DB.products.find(x=>x.id===it.productId);
-    const warn=!p||it.confianza<0.9;
-    return `<div class="rev-row ${warn?'warn':''}">
-      <span class="re">${warn?'❓':(p?.emoji||'🥬')}</span>
-      <div class="rn">
-        ${warn?`<select onchange="fixMatch(${i},this.value)"><option value="">— Elige —</option>${opts}</select>`:`<b>${p.name}</b>`}
-        <span>“${(it.texto||'').slice(0,60)}”</span>
-      </div>
-      <select style="border:2px solid var(--line);border-radius:10px;padding:6px;font-weight:700" onchange="pendingItems[${i}].unidad=this.value">
-        ${uopts.map(u=>`<option value="${u.id}" ${(it.unidad||'kilo')===u.id?'selected':''}>${u.short||u.id}</option>`).join('')}
-      </select>
-      <input class="qty-in" style="width:52px" inputmode="decimal" value="${it.cantidad||1}" oninput="pendingItems[${i}].cantidad=+this.value||1">
-      <button class="icon-btn" onclick="pendingItems[${i}].removed=true;this.closest('.rev-row').style.display='none'">🗑️</button>
-    </div>`;
-  }).join('');
-  window.pendingItems=items.map(it=>({...it,removed:false}));
-  window.pendingChannel=channel;
-  openSheet('✅ Revisa tu pedido',
-    (anyWarn?`<div class="warn-note"><span class="wi">⚠️</span>Revisa los productos resaltados: no logramos identificarlos con más del 90% de seguridad. Elígelos de la lista.</div>`:'')+rows,
-    [{label:'✅ Confirmar pedido',cls:'green',fn:confirmInterpreted}]);
-}
-function fixMatch(i,pid){
-  pendingItems[i].productId=pid||null; pendingItems[i].confianza=pid?1:0;
-  const row=$$('#sheetBody .rev-row')[[...$$('#sheetBody .rev-row')].findIndex((r,idx)=>idx===i)];
-}
-function confirmInterpreted(){
-  const good=pendingItems.filter(it=>!it.removed&&it.productId&&it.cantidad>0);
-  const missing=pendingItems.filter(it=>!it.removed&&!it.productId);
-  if(missing.length){toast('Hay productos sin identificar: elígelos de la lista o elimínalos');return;}
-  if(!good.length){toast('El pedido quedó vacío');return;}
-  cart={}; good.forEach(it=>cart[it.productId]={q:it.cantidad,u:it.unidad||'kilo'});
-  if(session.role==='admin'){submitOrder(window.manualClientId,pendingChannel==='voz'?'voz':'foto',true);}
-  else submitOrder(session.id,pendingChannel);
-}
 
 /* ============================================================
    ADMIN
@@ -971,7 +890,7 @@ let adminTab='dash';
 function adminNav(tab){
   adminTab=tab;
   $$('[data-anav]').forEach(b=>b.classList.toggle('on',b.dataset.anav===tab));
-  const r={dash:renderDash,consol:renderConsol,orders:renderOrders,catalog:renderCatalog,clients:renderClients,workers:renderWorkers,more:renderMore}[tab];
+  const r={dash:renderDash,consol:renderConsol,orders:renderOrders,catalog:renderCatalog,clients:renderClients,workers:renderWorkers,vocab:renderVocabulario,more:renderMore}[tab];
   $('#adminSub').textContent=fmtDate(todayStr());
   r();
 }
@@ -1255,6 +1174,7 @@ window.addEventListener('resize',()=>{if(session&&session.role==='client'&&$('#v
 /* ---------- arranque (init al final, tras features.js) ---------- */
 </script>
 <script src="features.js"></script>
+<script src="interpret.js"></script>
 <script src="workflow.js"></script>
 <script>
 if(typeof renderConsol==='function') window._renderConsol=renderConsol;

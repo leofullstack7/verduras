@@ -163,7 +163,7 @@ function openAcomodoPanel(id,readOnly){
     const wU=it.wUnit||'kilo';
     return `<div class="rev-row" data-ai="${i}">
       <span class="re">${p.emoji||'🥬'}</span>
-      <div class="rn"><b>${p.name}</b><span>Pedido: ${it.q} ${fmtUnit(it.u)}</span></div>
+      <div class="rn"><b>${p.name}</b><span>Pedido: ${it.q} ${it.uCliente||fmtUnit(it.u)}${it.equivNote?` · 📝 ${it.equivNote}`:''}</span></div>
       <input class="qty-in acomodo-in" style="width:70px" inputmode="decimal" id="aw_${i}" value="${wVal}" placeholder="Cant." ${ro?'disabled':''} oninput="acomodoInput('${id}',${i})">
       <select id="awu_${i}" class="acomodo-unit" ${ro?'disabled':''} onchange="acomodoInput('${id}',${i})">
         ${UNITS.map(u=>`<option value="${u.id}" ${wU===u.id?'selected':''}>${u.short}</option>`).join('')}
@@ -355,7 +355,7 @@ function openOrderDetail(id,readOnly){
     return `<div class="rev-row" id="prow_${i}">
       <span class="re">${p.emoji||'🥬'}</span>
       <div class="rn"><b>${p.name}</b>
-        <span>Pedido: ${it.q} ${fmtUnit(it.u)}${acom}</span>
+        <span>Pedido: ${it.q} ${it.uCliente||fmtUnit(it.u)}${acom}${it.equivNote?` · 📝 ${it.equivNote}`:''}</span>
         ${canPrice?`<div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
           <input class="qty-in price-in" id="pu_${i}" inputmode="decimal" value="${it.unitPrice||''}" placeholder="Precio" oninput="updatePriceRow(${i},'${id}')">
           <select id="punit_${i}" onchange="updatePriceRow(${i},'${id}')">
@@ -367,6 +367,7 @@ function openOrderDetail(id,readOnly){
   const btns=[];
   if(canPrice) btns.push({label:'📄 Crear remisión',cls:'green',fn:()=>createRemision(id)});
   if(rem||o.remisionNo) btns.push({label:'📄 Ver remisión',cls:'yellow',fn:()=>viewRemision(rem?.id,o.remisionNo)});
+  if(o.imagenOriginal) btns.push({label:'📷 Foto original',cls:'ghost',fn:()=>showOrderPhoto(o)});
   if(rem&&isAdmin&&!rem.enviadaAOperarioId) btns.push({label:'📨 Enviar a operario',cls:'orange',fn:()=>sendRemisionToWorker(rem.id)});
   if(isAdmin&&o.status!=='anulado'&&!readOnly) btns.push({label:'🗑️ Anular',cls:'orange',fn:()=>voidOrder(o.id)});
   openSheet(`${readOnly?'👁️ ':''}📦 Pedido — ${c.name}`,`

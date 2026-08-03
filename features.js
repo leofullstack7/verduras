@@ -46,7 +46,7 @@ function itemLabel(it){
   const p=DB.products.find(x=>x.id===it.p);
   const name=p?p.name:'—';
   const q=it.w!=null?it.w:it.q;
-  const u=fmtUnit(it.w!=null?(it.wUnit||it.u):it.u);
+  const u=it.uCliente||(it.w!=null?fmtUnit(it.wUnit||it.u):fmtUnit(it.u));
   return `${name}: ${q} ${u}`;
 }
 function calcItemTotal(it){
