@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>Referencia — Remisión digital Fruver Pedidos</title>
+<style>
+/*
+  REFERENCIA FUNCIONAL — NO ES EL PRODUCTO FINAL
+  ------------------------------------------------
+  Este archivo es una guía visual/estructural para que Cursor implemente la
+  remisión digital dentro del stack real de la aplicación (componentes,
+  estado, backend). Reproduce fielmente el formato de la hoja física de
+  Distribuidora L y O (ver imagen de referencia @img1 del cliente), con capas
+  digitales encima (estado, botones de acción) que no se imprimen.
+
+  Los datos de este archivo son de EJEMPLO. En la app real:
+  - Encabezado, Nº de remisión, cliente, productos y totales salen de la orden.
+  - El Nº de remisión es un consecutivo único en rojo (igual que en la hoja física).
+  - Todo lo marcado con class="no-print" se debe ocultar al imprimir/exportar PDF.
+*/
+:root{
+  --azul:#26438c; --azul-soft:#EAF0FB;
+  --green:#1FA84D; --green-soft:#E8F8EE;
+  --yellow:#DDA400; --yellow-soft:#FFF6D9;
+  --orange:#FF7A1F; --orange-soft:#FFEEDF;
+  --red:#D3232A;
+  --ink:#2b3440; --ink-soft:#66717e; --line:#dfe4ea;
+}
+*{box-sizing:border-box}
+body{font-family:'Nunito',Arial,sans-serif;background:#eef1f5;margin:0;padding:24px;color:var(--ink)}
+.page-toolbar{max-width:900px;margin:0 auto 14px;display:flex;gap:10px;justify-content:flex-end}
+.page-toolbar button{font-family:'Fredoka',Arial,sans-serif;font-weight:600;border:none;border-radius:14px;padding:11px 18px;cursor:pointer;color:#fff}
+.btn-print{background:var(--yellow-dark,#b98a00)}
+.btn-send{background:var(--green)}
+.btn-close{background:#fff;color:var(--ink);border:2px solid var(--line)!important}
+
+.remision{max-width:900px;margin:0 auto;background:#fff;border-radius:20px;border:2px solid var(--line);
+  box-shadow:0 12px 30px rgba(20,30,50,.08);overflow:hidden}
+
+/* ---- status ribbon (digital only) ---- */
+.status-bar{display:flex;align-items:center;justify-content:space-between;padding:10px 22px;
+  background:var(--green-soft);color:#126030;font-family:'Fredoka',Arial,sans-serif;font-weight:600;font-size:13.5px}
+.status-bar.enviada{background:var(--yellow-soft);color:#8a6a00}
+.status-bar .dot{width:9px;height:9px;border-radius:50%;background:currentColor;display:inline-block;margin-right:6px}
+
+/* ---- header replica hoja física ---- */
+.rhead{padding:22px 26px 14px;border-bottom:3px solid var(--azul);display:flex;gap:18px;align-items:flex-start}
+.rhead .logo{width:64px;height:64px;border-radius:14px;background:var(--azul-soft);display:flex;align-items:center;
+  justify-content:center;font-size:32px;flex:none}
+.rhead .brand{flex:1;text-align:center}
+.rhead .brand h1{font-family:'Fredoka',Arial,sans-serif;color:var(--azul);font-size:26px;letter-spacing:.5px;margin:0}
+.rhead .brand .l{color:var(--azul)}.rhead .brand .y{color:var(--green)}.rhead .brand .o{color:var(--azul)}
+.rhead .brand p{margin:2px 0 0;font-size:12.5px;color:var(--ink-soft);font-weight:700}
+.rhead .folio{flex:none;text-align:center}
+.rhead .folio .dma{display:flex;gap:4px;margin-bottom:6px}
+.rhead .folio .dma span{border:1.5px solid var(--line);border-radius:6px;font-size:9px;font-weight:800;
+  color:var(--ink-soft);padding:3px 6px}
+.rhead .folio .tag{font-size:11px;font-weight:800;color:var(--azul);letter-spacing:1px;margin-bottom:4px}
+.rhead .folio .num{border:2.5px solid var(--red);border-radius:10px;padding:6px 14px;font-family:'Fredoka',Arial,sans-serif;
+  font-size:20px;font-weight:700;color:var(--red)}
+
+/* ---- datos cliente ---- */
+.rclient{padding:14px 26px;border-bottom:2px dashed var(--line);font-size:13.5px}
+.rclient .row{display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap}
+.rclient b{color:var(--ink-soft);font-weight:800;text-transform:uppercase;font-size:11px;letter-spacing:.3px}
+.rclient span.val{font-weight:700;color:var(--ink)}
+
+/* ---- tabla productos: 2 columnas como la hoja física ---- */
+.rtable-wrap{padding:16px 26px}
+.rtable-cols{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:640px){.rtable-cols{grid-template-columns:1fr}}
+table.rtable{width:100%;border-collapse:collapse;font-size:12.5px}
+table.rtable thead th{background:var(--azul-soft);color:var(--azul);font-size:10.5px;text-transform:uppercase;
+  letter-spacing:.3px;padding:6px 5px;border:1px solid var(--line);text-align:left}
+table.rtable td{padding:6px 5px;border:1px solid var(--line)}
+table.rtable td.num{text-align:right;font-variant-numeric:tabular-nums}
+table.rtable td.art{font-weight:700}
+table.rtable td.art small{display:block;font-weight:400;color:var(--ink-soft);font-size:10.5px}
+
+/* ---- total + firma ---- */
+.rfoot{padding:6px 26px 24px}
+.rtotal{display:flex;justify-content:flex-end;margin:10px 0 22px}
+.rtotal .box{background:var(--azul);color:#fff;font-family:'Fredoka',Arial,sans-serif;font-weight:700;font-size:20px;
+  border-radius:14px;padding:12px 26px}
+.rsign{display:flex;justify-content:space-between;gap:20px;padding-top:18px;border-top:1.5px solid var(--line);font-size:12px;color:var(--ink-soft)}
+.rsign .line{flex:1;border-top:1.5px solid var(--ink);padding-top:4px;text-align:center}
+
+/* ---- valor calculado por producto (equivalente digital al detalle admin) ---- */
+.calc-hint{font-size:10px;color:var(--green);font-weight:800}
+
+/* ---- acciones digitales (no imprimen) ---- */
+.ractions{display:flex;flex-wrap:wrap;gap:10px;padding:0 26px 24px}
+.ractions button{font-family:'Fredoka',Arial,sans-serif;font-weight:600;border:none;border-radius:13px;padding:11px 18px;
+  cursor:pointer;font-size:13.5px;color:#fff}
+.act-send{background:var(--green)}
+.act-view{background:#fff;color:var(--azul);border:2px solid var(--azul)!important}
+.act-print{background:var(--yellow);color:#5c4a00}
+
+@media print{
+  body{background:#fff;padding:0}
+  .no-print{display:none!important}
+  .remision{border:none;box-shadow:none;border-radius:0}
+}
+</style>
+</head>
+<body>
+
+<div class="page-toolbar no-print">
+  <button class="btn-close" onclick="history.back()">← Volver al pedido</button>
+  <button class="btn-print" onclick="window.print()">🖨️ Imprimir / PDF</button>
+  <button class="btn-send">📤 Enviar a operario</button>
+</div>
+
+<div class="remision" id="remisionRoot">
+
+  <!-- Estado digital: cambia entre "Generada" / "Enviada a operario" / "Vista" -->
+  <div class="status-bar no-print" id="statusBar"><span class="dot"></span> Remisión generada — aún no enviada a ningún operario</div>
+
+  <!-- ===== ENCABEZADO (replica la hoja física) ===== -->
+  <div class="rhead">
+    <div class="logo">🧺</div>
+    <div class="brand">
+      <h1><span class="l">DISTRIBUIDORA</span> <span class="y">L</span> y <span class="o">O</span></h1>
+      <p>Olga Patricia Ocampo C. · C.C. 30.394.171</p>
+      <p>Cra 16 Nº 22-48 · Plaza de Mercado · Manizales</p>
+      <p>Cel: 310 376 56 74</p>
+    </div>
+    <div class="folio">
+      <div class="dma"><span>DÍA<br><b style="color:var(--ink)">02</b></span><span>MES<br><b style="color:var(--ink)">08</b></span><span>AÑO<br><b style="color:var(--ink)">2026</b></span></div>
+      <div class="tag">REMISIÓN</div>
+      <div class="num">Nº 00148</div>
+    </div>
+  </div>
+
+  <!-- ===== DATOS DEL CLIENTE (autocompletados desde el pedido) ===== -->
+  <div class="rclient">
+    <div class="row"><b>Señor(es):</b><span class="val">Restaurante La Terraza</span></div>
+    <div class="row"><b>Dirección:</b><span class="val">Cra 45 #10-20</span> &nbsp;&nbsp; <b>Teléfono:</b><span class="val">300 111 2233</span></div>
+    <div class="row"><b>Ciudad:</b><span class="val">Manizales</span> &nbsp;&nbsp; <b>Nit/CC:</b><span class="val">—</span></div>
+  </div>
+
+  <!-- ===== TABLA DE PRODUCTOS (misma estructura de la hoja: 2 columnas, CANT/ARTÍCULO/VR.UNITARIO/VR.TOTAL) ===== -->
+  <div class="rtable-wrap">
+    <div class="rtable-cols">
+      <table class="rtable">
+        <thead><tr><th>Cant.</th><th>Artículo</th><th>Vr. Unit.</th><th>Vr. Total</th></tr></thead>
+        <tbody>
+          <tr><td class="num">2 bultos<br><span class="calc-hint">18,4 kg</span></td><td class="art">Papa pastusa<small>pedido: 2 bultos</small></td><td class="num">$2.200/kg</td><td class="num">$40.480</td></tr>
+          <tr><td class="num">1 canast.<br><span class="calc-hint">6,2 kg</span></td><td class="art">Tomate chonto<small>pedido: 1 canastilla</small></td><td class="num">$3.000/kg</td><td class="num">$18.600</td></tr>
+          <tr><td class="num">5<br><span class="calc-hint">atados</span></td><td class="art">Cilantro<small>pedido: 5 atados</small></td><td class="num">$1.000/u</td><td class="num">$5.000</td></tr>
+        </tbody>
+      </table>
+      <table class="rtable">
+        <thead><tr><th>Cant.</th><th>Artículo</th><th>Vr. Unit.</th><th>Vr. Total</th></tr></thead>
+        <tbody>
+          <tr><td class="num">6<br><span class="calc-hint">4,1 kg</span></td><td class="art">Zanahoria<small>pedido: 6 kg</small></td><td class="num">$1.800/kg</td><td class="num">$7.380</td></tr>
+          <tr><td></td><td class="art" style="color:var(--ink-soft)">—</td><td></td><td></td></tr>
+          <tr><td></td><td class="art" style="color:var(--ink-soft)">—</td><td></td><td></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ===== TOTAL Y FIRMA ===== -->
+  <div class="rfoot">
+    <div class="rtotal"><div class="box">TOTAL&nbsp; $71.460</div></div>
+    <div class="rsign">
+      <div class="line">Firma</div>
+      <div class="line">CC / NIT</div>
+    </div>
+  </div>
+
+  <!-- ===== ACCIONES DIGITALES (solo en pantalla, no se imprimen) ===== -->
+  <div class="ractions no-print">
+    <button class="act-send">📤 Enviar a operario</button>
+    <button class="act-view">👁️ Ver pedido (solo lectura)</button>
+    <button class="act-print" onclick="window.print()">🖨️ Imprimir / Exportar PDF</button>
+  </div>
+
+</div>
+
+<p style="max-width:900px;margin:14px auto 0;text-align:center;font-size:12px;color:#93a0ad" class="no-print">
+  Referencia estructural para Cursor · Fruver Pedidos · reemplazar datos de ejemplo por los reales del pedido
+</p>
+
+</body>
+</html>

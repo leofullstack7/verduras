@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Fruver Pedidos</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -19,11 +19,11 @@
   --r-lg:26px; --r-md:18px; --r-sm:12px;
   --shadow:0 10px 30px rgba(43,52,64,.08);
 }
-*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-html,body{height:100%}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+html,body{height:100%;overflow-x:hidden;overscroll-behavior-x:none}
 body{
   font-family:'Nunito',system-ui,sans-serif;color:var(--ink);background:var(--bg);
-  overflow:hidden;height:100dvh;
+  overflow:hidden;height:100dvh;max-width:100vw;
 }
 h1,h2,h3,.display{font-family:'Fredoka',sans-serif}
 button{font-family:'Fredoka',sans-serif;border:none;cursor:pointer;background:none;color:inherit}
@@ -42,7 +42,7 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
 @media (prefers-reduced-motion:reduce){.blob,.floaty{animation:none}.floaty{display:none}}
 
 /* ---------- app shell ---------- */
-#app{position:relative;z-index:1;height:100dvh;display:flex;flex-direction:column;max-width:1080px;margin:0 auto;width:100%}
+#app{position:relative;z-index:1;height:100dvh;display:flex;flex-direction:column;max-width:1080px;margin:0 auto;width:100%;overflow-x:hidden}
 .view{position:absolute;inset:0;display:none;flex-direction:column;padding:max(14px,env(safe-area-inset-top)) 16px 0}
 .view.active{display:flex;animation:viewIn .38s cubic-bezier(.34,1.4,.5,1)}
 @keyframes viewIn{from{opacity:0;transform:translateY(22px) scale(.985)}to{opacity:1;transform:none}}
@@ -105,31 +105,33 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
 @media(hover:hover){.mode-btn:hover{transform:translateY(-3px)}
   .mode-btn.voice:hover{border-color:var(--orange);box-shadow:0 7px 0 var(--orange-soft)}
   .mode-btn.photo:hover{border-color:var(--yellow-dark);box-shadow:0 7px 0 var(--yellow-soft)}}
-.grid{flex:1;min-height:0;display:grid;gap:12px;grid-template-columns:repeat(2,1fr);grid-auto-rows:1fr;align-content:stretch}
-@media(min-width:760px){.grid{grid-template-columns:repeat(4,1fr)}}
-.pcard{display:flex;flex-direction:column;align-items:center;justify-content:space-between;gap:6px;padding:12px 10px 12px;
-  background:#fff;border:2px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);position:relative;overflow:hidden;transition:.18s;min-height:0}
+.grid{flex:1;min-height:0;display:grid;gap:8px;grid-template-columns:repeat(3,1fr);grid-auto-rows:auto;align-content:start}
+@media(min-width:760px){.grid{grid-template-columns:repeat(5,1fr);gap:10px}}
+@media(min-width:1024px){.grid{grid-template-columns:repeat(6,1fr)}}
+.pcard{display:flex;flex-direction:column;align-items:center;justify-content:space-between;gap:4px;padding:8px 6px 8px;
+  background:#fff;border:2px solid var(--line);border-radius:var(--r-md);box-shadow:var(--shadow);position:relative;overflow:hidden;transition:.18s;min-height:0}
 .pcard::before{content:"";position:absolute;inset:auto -30% -55% -30%;height:75%;border-radius:50%;background:var(--tint,#E8F8EE);z-index:0;transition:.25s}
 .pcard>*{z-index:1}
 @media(hover:hover){.pcard:hover{transform:translateY(-5px) rotate(-.5deg);border-color:var(--edge,var(--green));box-shadow:0 16px 30px rgba(43,52,64,.14)}
   .pcard:hover::before{transform:scale(1.25)} .pcard:hover .pimg{transform:scale(1.14) rotate(-6deg)}}
 .pcard.selected{border-color:var(--edge,var(--green))}
-.pcard.selected::after{content:"✓";position:absolute;top:8px;right:10px;width:24px;height:24px;border-radius:50%;
-  background:var(--edge,var(--green));color:#fff;display:grid;place-items:center;font-size:14px;font-weight:700;animation:pop .3s both;z-index:2}
-.pimg{font-size:clamp(38px,9dvh,64px);line-height:1;filter:drop-shadow(0 6px 6px rgba(0,0,0,.15));transition:.25s}
-.pimg img{width:clamp(44px,9dvh,70px);height:clamp(44px,9dvh,70px);object-fit:cover;border-radius:16px}
-.pname{font-family:'Fredoka';font-weight:600;font-size:14.5px;text-align:center;line-height:1.15}
+.pcard.selected::after{content:"✓";position:absolute;top:5px;right:6px;width:18px;height:18px;border-radius:50%;
+  background:var(--edge,var(--green));color:#fff;display:grid;place-items:center;font-size:11px;font-weight:700;animation:pop .3s both;z-index:2}
+.pimg{font-size:clamp(26px,6.5dvh,44px);line-height:1;filter:drop-shadow(0 4px 4px rgba(0,0,0,.12));transition:.25s}
+.pimg img{width:clamp(36px,7dvh,52px);height:clamp(36px,7dvh,52px);object-fit:contain;border-radius:10px}
+.pname{font-family:'Fredoka';font-weight:600;font-size:11.5px;text-align:center;line-height:1.1}
 .punit{font-size:11.5px;color:var(--ink-soft);font-weight:800;text-transform:uppercase;letter-spacing:.4px}
 .unit-sel{border:2px solid var(--line);border-radius:10px;padding:4px 6px;font-weight:800;font-size:11px;background:#fff;max-width:58px}
 .check-row{display:flex;align-items:center;gap:10px}
-.badge-top{position:absolute;top:8px;left:10px;font-size:10px;font-weight:800;font-family:'Nunito';background:var(--yellow-soft);
-  color:#8a6a00;border-radius:20px;padding:3px 8px;z-index:2}
-.stepper{display:flex;align-items:center;gap:6px}
-.step-btn{width:38px;height:38px;border-radius:13px;font-size:20px;font-weight:700;color:#fff;display:grid;place-items:center;transition:transform .08s}
+.badge-top{position:absolute;top:4px;left:5px;font-size:8px;font-weight:800;font-family:'Nunito';background:var(--yellow-soft);
+  color:#8a6a00;border-radius:20px;padding:2px 5px;z-index:2}
+.stepper{display:flex;align-items:center;gap:4px;flex-wrap:wrap;justify-content:center}
+.step-btn{width:44px;height:44px;border-radius:11px;font-size:18px;font-weight:700;color:#fff;display:grid;place-items:center;transition:transform .08s}
 .step-btn.minus{background:var(--orange);box-shadow:0 3px 0 var(--orange-dark)}
 .step-btn.plus{background:var(--green);box-shadow:0 3px 0 var(--green-dark)}
 .step-btn:active{transform:translateY(3px);box-shadow:none!important}
-.qty-in{width:46px;height:38px;text-align:center;font-weight:800;font-size:16px;border:2px solid var(--line);border-radius:12px;color:var(--ink)}
+.qty-in{width:44px;height:44px;text-align:center;font-weight:800;font-size:15px;border:2px solid var(--line);border-radius:11px;color:var(--ink)}
+.price-in{width:calc(44px * 1.05 + 2px)!important;min-width:48px}
 .qty-in:focus{outline:none;border-color:var(--green)}
 .qty-in.bump{animation:bump .25s}
 @keyframes bump{50%{transform:scale(1.25);border-color:var(--green)}}
@@ -257,6 +259,59 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
 .hist-day{margin-bottom:14px;animation:pop .35s both}
 .hist-day h3{font-size:14px;font-weight:600;color:var(--ink-soft);margin-bottom:6px;display:flex;gap:8px;align-items:center}
 
+/* ---------- tarjetas pedido (operario/admin) ---------- */
+.order-card{border-radius:var(--r-md);border:2px solid var(--line);padding:12px 14px;margin-bottom:8px}
+.oc-head{display:flex;align-items:flex-start;gap:10px}
+.oc-emoji{font-size:28px;line-height:1}
+.oc-title{flex:1;min-width:0}
+.oc-title b{font-family:'Fredoka';font-size:15px;display:block}
+.oc-title>span{font-size:12px;color:var(--ink-soft);font-weight:700;display:block;margin-top:2px}
+.oc-preview{font-size:12px;color:var(--ink);font-weight:700;display:block;margin-top:4px}
+.oc-op{font-size:11px;color:#999;font-weight:700;display:block;margin-top:3px}
+.acomodando-pulse{font-size:12px;font-weight:800;color:#8a6a00;animation:pulse 1.2s ease infinite;display:block;margin-top:4px}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+
+/* ---------- filtros deslizables ---------- */
+.filter-scroll{display:flex;gap:8px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;
+  padding:4px 2px 10px;margin-bottom:8px;-webkit-overflow-scrolling:touch}
+.filter-chip{flex:none;scroll-snap-align:start;padding:8px 14px;border-radius:20px;border:2px solid var(--line);
+  background:#fff;font-family:'Fredoka';font-weight:600;font-size:13px;color:var(--ink-soft);white-space:nowrap}
+.filter-chip.on{background:var(--green-soft);border-color:var(--green);color:var(--green-dark)}
+
+/* ---------- dashboard rediseñado ---------- */
+.dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(min-width:760px){.dash-grid{grid-template-columns:1.2fr 1fr 1fr 1fr}}
+.dash-ring{grid-column:1/-1;display:flex;align-items:center;gap:16px;padding:16px}
+@media(min-width:760px){.dash-ring{grid-column:span 1;flex-direction:column;text-align:center}}
+.progress-ring{width:100px;height:100px;flex:none}
+.ring-label{font-family:'Fredoka';font-size:18px;line-height:1.2}
+.ring-label span{display:block;font-size:13px;color:var(--ink-soft);font-family:'Nunito';font-weight:700;margin-top:4px}
+.dash-stat{padding:14px;text-align:center}
+.ds-num{font-family:'Fredoka';font-size:26px;font-weight:700;line-height:1.1}
+.ds-lbl{font-size:12px;color:var(--ink-soft);font-weight:700;margin-top:4px}
+.dash-stat.y .ds-num{color:var(--yellow-dark)}
+.dash-stat.o .ds-num{color:var(--orange)}
+.dash-stat.g .ds-num{color:var(--green)}
+
+/* ---------- precios / remisión ---------- */
+.price-total-box{background:rgba(31,168,77,.12);border-radius:10px;padding:6px 10px;margin-top:6px;
+  font-weight:800;font-size:13px;color:var(--green-dark);display:inline-block}
+
+/* ---------- notificaciones ---------- */
+.notif-fab{position:fixed;left:16px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:40;
+  width:56px;height:56px;border-radius:50%;background:#fff;border:2px solid var(--line);box-shadow:var(--shadow);
+  font-size:28px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.notif-badge{position:absolute;top:-4px;right:-4px;min-width:20px;height:20px;border-radius:10px;
+  background:var(--red);color:#fff;font-size:11px;font-weight:800;font-family:'Nunito';
+  display:grid;place-items:center;padding:0 5px;animation:nbpulse 1.5s ease infinite}
+@keyframes nbpulse{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
+.notif-row{padding:12px;border:2px solid var(--line);border-radius:14px;margin-bottom:8px;background:#fff}
+
+/* ---------- burbuja acomodo minimizado ---------- */
+.acomodo-bubble{position:fixed;bottom:calc(80px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);
+  z-index:45;background:#fff;border:2px solid var(--green);border-radius:20px;padding:10px 14px;
+  box-shadow:var(--shadow);display:flex;align-items:center;gap:10px;font-weight:700;font-size:14px;max-width:92vw}
+
 @media print{
   body *{visibility:hidden}
   #printArea,#printArea *{visibility:visible}
@@ -339,7 +394,7 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
   <!-- ===================== OPERARIO ===================== -->
   <section class="view" id="v-worker">
     <div class="topbar">
-      <div><h1>Pesar pedidos</h1><div class="sub" id="workerSub"></div></div>
+      <div><h1>Acomodar pedidos</h1><div class="sub" id="workerSub"></div></div>
       <div class="spacer"></div>
       <button class="icon-btn" onclick="logout()">🚪</button>
     </div>
@@ -382,6 +437,7 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
 <div class="toast" id="toast"></div>
 <div id="printArea" style="display:none"></div>
 
+<script src="catalog.js"></script>
 <script src="config.local.js" onerror="window.FRUVER_CONFIG=window.FRUVER_CONFIG||{}"></script>
 <script>
 /* ============================================================
@@ -409,21 +465,10 @@ async function callOpenAI(messages,maxTokens=1000){
 }
 
 /* ---------- datos semilla ---------- */
-const SEED_PRODUCTS=[
- {id:'p1',name:'Papa pastusa',emoji:'🥔',tint:'#FFF6D9',edge:'#DDA400',active:true},
- {id:'p2',name:'Cebolla cabezona',emoji:'🧅',tint:'#F3E8FF',edge:'#9333EA',active:true},
- {id:'p3',name:'Tomate chonto',emoji:'🍅',tint:'#FDECEC',edge:'#E5484D',active:true},
- {id:'p4',name:'Zanahoria',emoji:'🥕',tint:'#FFEEDF',edge:'#FF7A1F',active:true},
- {id:'p5',name:'Plátano verde',emoji:'🍌',tint:'#E8F8EE',edge:'#1FA84D',active:true},
- {id:'p6',name:'Limón Tahití',emoji:'🍋',tint:'#FFF6D9',edge:'#DDA400',active:true},
- {id:'p7',name:'Aguacate Hass',emoji:'🥑',tint:'#E8F8EE',edge:'#1FA84D',active:true},
- {id:'p8',name:'Cilantro',emoji:'🌿',tint:'#E8F8EE',edge:'#1FA84D',active:true},
- {id:'p9',name:'Pimentón',emoji:'🫑',tint:'#FDECEC',edge:'#E5484D',active:true},
- {id:'p10',name:'Lechuga Batavia',emoji:'🥬',tint:'#E8F8EE',edge:'#1FA84D',active:true},
-];
+const SEED_PRODUCTS=typeof buildSeedProducts==='function'?buildSeedProducts():[];
 const SEED_WORKERS=[
- {id:'w1',name:'Carlos',username:'carlos',password:'carlos1'},
- {id:'w2',name:'María',username:'maria',password:'maria1'},
+ {id:'w1',name:'Carlos',username:'carlos',password:'carlos1',avatarEmoji:'👨‍🌾',activo:true},
+ {id:'w2',name:'María',username:'maria',password:'maria1',avatarEmoji:'👩‍🌾',activo:true},
 ];
 const SEED_ADMIN={username:'olga',password:'1234',name:'Olga'};
 const SEED_CLIENTS=[
@@ -443,10 +488,10 @@ function seedOrders(){
     out.push({id:uid(),clientId:cid,date:d.toISOString().slice(0,10),time:time||'07:30',
       channel:'app',status:'cerrado',description:desc||'',deliveryTime:del||'07:00',shift:orderShift(time||'07:30'),
       items:items.map(it=>({p:it.p,q:it.q,u:it.u||'kilo'}))});};
-  mk('c1',-1,[{p:'p1',q:2,u:'kilo'},{p:'p3',q:1,u:'kilo'},{p:'p8',q:5,u:'unidad'}]);
-  mk('c1',-2,[{p:'p1',q:2,u:'kilo'},{p:'p3',q:2,u:'kilo'},{p:'p4',q:6,u:'kilo'}]);
-  mk('c2',-1,[{p:'p7',q:2,u:'unidad'},{p:'p6',q:10,u:'kilo'},{p:'p1',q:1,u:'kilo'}],'19:30','Pedido cena','06:00');
-  mk('c3',-1,[{p:'p6',q:4,u:'kilo'},{p:'p9',q:3,u:'kilo'},{p:'p10',q:12,u:'unidad'}]);
+  mk('c1',-1,[{p:'papa',q:2,u:'kilo'},{p:'tomate-chonto',q:1,u:'kilo'},{p:'cilantro',q:5,u:'unidad'}]);
+  mk('c1',-2,[{p:'papa',q:2,u:'kilo'},{p:'tomate-chonto',q:2,u:'kilo'},{p:'zanahoria',q:6,u:'kilo'}]);
+  mk('c2',-1,[{p:'aguacate',q:2,u:'unidad'},{p:'limon',q:10,u:'kilo'},{p:'papa',q:1,u:'kilo'}],'19:30','Pedido cena','06:00');
+  mk('c3',-1,[{p:'limon',q:4,u:'kilo'},{p:'pimenton',q:3,u:'kilo'},{p:'lechuga-batavia',q:12,u:'unidad'}]);
   return out;
 }
 
@@ -455,7 +500,7 @@ let DB=null, dbUpdatedAt=null, syncTimer=null, saveT=null, saving=false;
 const API_DB='/api/db';
 
 function defaultDB(){
-  return {products:SEED_PRODUCTS,clients:SEED_CLIENTS,workers:SEED_WORKERS,orders:seedOrders(),purchases:[],audit:[],config:{cutoff:'16:00',remisionNext:12588},admin:{...SEED_ADMIN}};
+  return {products:SEED_PRODUCTS,clients:SEED_CLIENTS,workers:SEED_WORKERS,orders:seedOrders(),purchases:[],audit:[],config:{cutoff:'16:00',remisionNext:12588},admin:{...SEED_ADMIN},invitations:[],notifications:[],remisiones:[]};
 }
 
 async function loadDB(force=false){
@@ -518,19 +563,33 @@ function migrateDB(){
   if(!DB.admin) DB.admin={...SEED_ADMIN};
   if(!DB.workers) DB.workers=SEED_WORKERS.map(w=>({...w}));
   if(!DB.purchases) DB.purchases=[];
+  if(!DB.invitations) DB.invitations=[];
+  if(!DB.notifications) DB.notifications=[];
+  if(!DB.remisiones) DB.remisiones=[];
   if(!DB.config.remisionNext) DB.config.remisionNext=12588;
-  DB.products.forEach(p=>delete p.unit);
+  const hasOldCatalog=DB.products.some(p=>/^p\d+$/.test(p.id));
+  if(hasOldCatalog||DB.products.length<40){
+    DB.products=typeof buildSeedProducts==='function'?buildSeedProducts():SEED_PRODUCTS;
+  }
+  DB.products.forEach(p=>{delete p.unit; if(!p.unidad_sugerida) p.unidad_sugerida='kilo';});
   const defaults={c1:{username:'terraza',password:'terraza1'},c2:{username:'carretero',password:'carretero1'},c3:{username:'solar',password:'solar1'}};
   DB.clients.forEach(c=>{
     delete c.exception;
     if(!c.username) c.username=defaults[c.id]?.username||slugUsername(c.name);
     if(!c.password) c.password=defaults[c.id]?.password||(c.username+'1');
   });
+  const statusMap={pesado:'acomodado',facturado:'remisionado',consolidado:'cerrado'};
   DB.orders.forEach(o=>{
     o.description=o.description||'';
     o.deliveryTime=o.deliveryTime||'';
     o.shift=o.shift||orderShift(o.time);
-    o.items=(o.items||[]).map(it=>({p:it.p,q:it.q,u:it.u||'kilo',w:it.w??null,unitPrice:it.unitPrice??null,priceUnit:it.priceUnit||it.u||'kilo',total:it.total??null}));
+    if(statusMap[o.status]) o.status=statusMap[o.status];
+    if(o.weighedBy&&!o.operarioId){
+      const w=DB.workers.find(x=>x.name===o.weighedBy);
+      if(w) o.operarioId=w.id;
+    }
+    if(o.weighedAt&&!o.acomodoFinalizadoEn) o.acomodoFinalizadoEn=o.weighedAt;
+    o.items=(o.items||[]).map(it=>({p:it.p,q:it.q,u:it.u||'kilo',w:it.w??null,wUnit:it.wUnit||null,unitPrice:it.unitPrice??null,priceUnit:it.priceUnit||it.u||'kilo',total:it.total??null}));
   });
 }
 function audit(action,detail){
@@ -614,7 +673,12 @@ function sortedForClient(cid){
   DB.orders.filter(o=>o.clientId===cid&&o.status!=='anulado').forEach(o=>o.items.forEach(it=>freq[it.p]=(freq[it.p]||0)+1));
   return activeProducts().slice().sort((a,b)=>(freq[b.id]||0)-(freq[a.id]||0));
 }
-function pageSize(){return window.innerWidth>=760?8:4;}
+function pageSize(){
+  const w=window.innerWidth;
+  if(w>=1024) return 18;
+  if(w>=760) return 15;
+  return 9;
+}
 function renderClientOrder(){
   const c=DB.clients.find(x=>x.id===session.id);
   $('#helloClient').textContent='¡Hola, '+c.name.split(' ')[0]+'! 👋';
@@ -626,15 +690,17 @@ function renderClientOrder(){
   const freq={}; DB.orders.filter(o=>o.clientId===session.id).forEach(o=>o.items.forEach(it=>freq[it.p]=1));
   const grid=$('#prodGrid'); grid.innerHTML='';
   slice.forEach((p,i)=>{
-    const citem=cart[p.id]||{q:0,u:'kilo'};
+    const defU=p.unidad_sugerida||'kilo';
+    const citem=cart[p.id]||{q:0,u:defU};
     const q=citem.q||0;
     const el=document.createElement('div');
     el.className='pcard pop'+(q>0?' selected':'');
     el.style.setProperty('--tint',p.tint||'#E8F8EE');
     el.style.setProperty('--edge',p.edge||'var(--green)');
-    el.style.animationDelay=(i*60)+'ms';
-    el.innerHTML=`${page===0&&freq[p.id]?'<span class="badge-top">⭐ frecuente</span>':''}
-      <div class="pimg">${p.img?`<img src="${p.img}" alt="">`:p.emoji}</div>
+    el.style.animationDelay=(i*40)+'ms';
+    const imgHtml=p.img?`<img src="${p.img}" alt="" onerror="this.replaceWith(document.createTextNode('${p.emoji||'🥬'}'))">`:(p.emoji||'🥬');
+    el.innerHTML=`${page===0&&freq[p.id]?'<span class="badge-top">⭐</span>':''}
+      <div class="pimg">${imgHtml}</div>
       <div><div class="pname">${p.name}</div></div>
       <div class="stepper">
         <select class="unit-sel" onchange="setCartUnit('${p.id}',this.value)">${['kilo','gramo','unidad'].map(u=>`<option value="${u}" ${citem.u===u?'selected':''}>${u==='kilo'?'kg':u==='gramo'?'g':'und'}</option>`).join('')}</select>
@@ -650,9 +716,10 @@ function renderClientOrder(){
   updateCartBar();
 }
 function changePage(d){page+=d;renderClientOrder();}
-function setCartUnit(pid,u){if(!cart[pid])cart[pid]={q:0,u:'kilo'};cart[pid].u=u;}
+function setCartUnit(pid,u){if(!cart[pid]){const p=DB.products.find(x=>x.id===pid);cart[pid]={q:0,u:p?.unidad_sugerida||'kilo'};}cart[pid].u=u;}
 function stepQty(pid,d,btn){
-  if(!cart[pid])cart[pid]={q:0,u:'kilo'};
+  const p=DB.products.find(x=>x.id===pid);
+  if(!cart[pid])cart[pid]={q:0,u:p?.unidad_sugerida||'kilo'};
   cart[pid].q=Math.max(0,(cart[pid].q||0)+d);
   if(cart[pid].q===0)delete cart[pid];
   const card=btn.closest('.pcard'); const inp=card.querySelector('.qty-in');
@@ -663,7 +730,8 @@ function stepQty(pid,d,btn){
 function typeQty(pid,inp){
   inp.value=inp.value.replace(/[^0-9.,]/g,'').slice(0,8);
   const n=parseFloat(inp.value.replace(',','.'))||0;
-  if(n>0){if(!cart[pid])cart[pid]={q:0,u:'kilo'};cart[pid].q=n;} else delete cart[pid];
+  const p=DB.products.find(x=>x.id===pid);
+  if(n>0){if(!cart[pid])cart[pid]={q:0,u:p?.unidad_sugerida||'kilo'};cart[pid].q=n;} else delete cart[pid];
   inp.closest('.pcard').classList.toggle('selected',n>0);
   updateCartBar();
 }
@@ -886,37 +954,13 @@ function adminNav(tab){
 }
 const ordersOf=(date)=>DB.orders.filter(o=>o.date===date&&o.status!=='anulado');
 
-function renderDash(){
-  const t=ordersOf(todayStr());
-  const st=s=>t.filter(o=>o.status===s).length;
-  const clientsIn=new Set(t.map(o=>o.clientId)).size;
-  const pendClients=DB.clients.length-clientsIn;
-  $('#adminBody').innerHTML=`
-    <div class="stat-grid">
-      <div class="stat g pop" data-ic="📦"><div class="num">${t.length}</div><div class="lbl">Pedidos hoy</div></div>
-      <div class="stat y pop" data-ic="⏳" style="animation-delay:.06s"><div class="num">${st('pendiente')}</div><div class="lbl">Pendientes</div></div>
-      <div class="stat o pop" data-ic="🧮" style="animation-delay:.12s"><div class="num">${st('consolidado')}</div><div class="lbl">Consolidados</div></div>
-      <div class="stat g pop" data-ic="🔒" style="animation-delay:.18s"><div class="num">${st('cerrado')}</div><div class="lbl">Cerrados</div></div>
-    </div>
-    <div class="card pop" style="padding:14px;margin-top:12px;animation-delay:.2s">
-      <b class="display">⏰ Hora de corte: ${DB.config.cutoff}</b>
-      <div style="font-size:13px;color:var(--ink-soft);font-weight:700;margin-top:2px">
-        ${pendClients>0?pendClients+' cliente(s) aún no han pedido hoy':'¡Todos los clientes ya pidieron! 🎉'}
-      </div>
-    </div>
-    <div style="display:grid;gap:10px;grid-template-columns:1fr 1fr;margin-top:12px">
-      <button class="btn green" onclick="adminNav('consol')">🧮 Ver lista de compra</button>
-      <button class="btn orange" onclick="openManualOrder()">✍️ Registrar pedido</button>
-    </div>
-    <h3 style="margin:16px 0 8px;font-weight:600">Últimos pedidos de hoy</h3>
-    ${t.slice(0,5).map(o=>orderRowHTML(o)).join('')||'<div class="empty" style="padding:16px"><span class="ee">🌅</span><span>Aún no llegan pedidos hoy</span></div>'}`;
-}
+function renderDash(){if(typeof window._renderDashImpl==='function')window._renderDashImpl();}
 function orderRowHTML(o){ /* overridden by features.js */ return '';}
 
 /* renderConsol/renderOrders in features.js */
 let consolDate=todayStr();
 function renderConsol(){if(typeof window._renderConsol==='function')window._renderConsol();}
-function renderOrders(){if(typeof window._renderOrders==='function')window._renderOrders();}
+function renderOrders(){if(typeof window._renderOrdersImpl==='function')window._renderOrdersImpl();}
 function printConsol(){
   const list=ordersOf(consolDate); const sum={};
   list.forEach(o=>o.items.forEach(it=>{const k=it.p;sum[k]=(sum[k]||0)+(+it.q||0);}));
@@ -935,11 +979,7 @@ function closeDay(){
 
 /* pedidos admin in features.js */
 let ordersDate=todayStr();
-function voidOrder(id){
-  const o=DB.orders.find(x=>x.id===id);
-  openSheet('🗑️ Anular pedido',`<p style="font-weight:700">¿Anular el pedido de <b>${clientName(o.clientId)}</b> (${o.time})? Quedará registro en la auditoría.</p>`,
-    [{label:'Sí, anular',cls:'orange',fn:()=>{o.status='anulado';audit('Anuló pedido',clientName(o.clientId)+' · '+o.date+' '+o.time);saveDB();closeSheet();adminNav(adminTab);toast('Pedido anulado');}}]);
-}
+function voidOrder(id){if(typeof window._voidOrderImpl==='function')window._voidOrderImpl(id);}
 function editOrder(id){
   const o=DB.orders.find(x=>x.id===id);
   window.editingOrderId=id;
@@ -1005,7 +1045,7 @@ function catListHTML(q){
   return DB.products.filter(p=>norm(p.name).includes(norm(q))).map((p,i)=>`
     <div class="list-row" style="animation-delay:${i*40}ms;${p.active?'':'opacity:.5'}">
       <span class="le">${p.img?`<img src="${p.img}" style="width:34px;height:34px;border-radius:9px;object-fit:cover">`:p.emoji}</span>
-      <div class="lt"><b>${p.name}</b><span>${p.active?'':'desactivado'}</span></div>
+      <div class="lt"><b>${p.name}</b><span>${p.unidad_sugerida||'kilo'} · ${p.active?'':'desactivado'}</span></div>
       <button class="icon-btn" onclick="openProductForm('${p.id}')">✏️</button>
       <button class="icon-btn" onclick="toggleProduct('${p.id}')">${p.active?'🚫':'✅'}</button>
     </div>`).join('')||'<div class="empty" style="padding:16px"><span class="ee">🔍</span><span>Sin resultados</span></div>';
@@ -1017,7 +1057,7 @@ function toggleProduct(id){
 }
 const EMOJIS=['🥔','🧅','🍅','🥕','🍌','🍋','🥑','🌿','🫑','🥬','🍎','🍊','🍓','🍇','🍍','🥭','🍐','🥒','🌽','🥦','🍠','🫘','🍆','🧄'];
 function openProductForm(id){
-  const p=id?DB.products.find(x=>x.id===id):{name:'',emoji:'🍎',img:null};
+  const p=id?DB.products.find(x=>x.id===id):{name:'',emoji:'🍎',img:null,unidad_sugerida:'kilo'};
   window.formImg=p.img||null; window.formEmoji=p.emoji||'🍎';
   const em=EMOJIS.map(e=>`<button type="button" class="${e===window.formEmoji?'on':''}" onclick="pickEmoji(this,'${e}')">${e}</button>`).join('');
   openSheet(id?'✏️ Editar producto':'➕ Nuevo producto',`
@@ -1030,15 +1070,16 @@ function openProductForm(id){
         <button class="btn yellow sm" type="button" onclick="suggestEmojiAI()">✨ Sugerir con IA</button>
       </div>
       <div class="emoji-pick">${em}</div>
-      <p style="font-size:12px;color:var(--ink-soft);font-weight:700;margin-top:6px">💡 En esta demo la “imagen IA” se representa con el ícono sugerido; la generación real de PNG sin fondo se conecta en la fase de backend.</p>
-    </div>`,
+    </div>
+    <div class="field"><label>Unidad sugerida (default catálogo)</label>
+      <select id="pfUnit">${['kilo','gramo','unidad'].map(u=>`<option value="${u}" ${(p.unidad_sugerida||'kilo')===u?'selected':''}>${u==='kilo'?'Kilo (kg)':u==='gramo'?'Gramo (g)':'Unidad'}</option>`).join('')}</select></div>`,
     [{label:'💾 Guardar',cls:'green',fn:()=>{
       const name=$('#pfName').value.trim();
       if(!name){toast('Escribe el nombre del producto');return;}
       const dup=DB.products.find(x=>x.name.toLowerCase()===name.toLowerCase()&&x.id!==id);
       if(dup){toast('Ya existe "'+name+'"');return;}
-      if(id){Object.assign(p,{name,emoji:window.formEmoji,img:window.formImg});audit('Editó producto',name);}
-      else{DB.products.push({id:uid(),name,emoji:window.formEmoji,img:window.formImg,tint:'#E8F8EE',edge:'#1FA84D',active:true});audit('Creó producto',name);}
+      if(id){Object.assign(p,{name,emoji:window.formEmoji,img:window.formImg,unidad_sugerida:$('#pfUnit').value});audit('Editó producto',name);}
+      else{DB.products.push({id:uid(),name,emoji:window.formEmoji,img:window.formImg,unidad_sugerida:$('#pfUnit').value,tint:'#E8F8EE',edge:'#1FA84D',active:true});audit('Creó producto',name);}
       saveDB(); closeSheet(); renderCatalog(); toast('Producto guardado ✅');
     }}]);
 }
@@ -1191,9 +1232,9 @@ window.addEventListener('resize',()=>{if(session&&session.role==='client'&&$('#v
 /* ---------- arranque (init al final, tras features.js) ---------- */
 </script>
 <script src="features.js"></script>
+<script src="workflow.js"></script>
 <script>
 if(typeof renderConsol==='function') window._renderConsol=renderConsol;
-if(typeof renderOrders==='function') window._renderOrders=renderOrders;
 (async function init(){
   await loadDB();
   migrateDB();

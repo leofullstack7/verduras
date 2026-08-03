@@ -62,99 +62,19 @@ function orderTotal(o){
   return o.items.reduce((s,it)=>s+(it.total!=null?+it.total:calcItemTotal(it)),0);
 }
 function statusChip(st){
-  const m={pendiente:'pend',pesado:'cons',facturado:'cons',consolidado:'cons',cerrado:'cerr',anulado:'anul'};
+  const m={pendiente:'pend',acomodando:'cons',acomodado:'cons',remisionado:'cons',pesado:'cons',facturado:'cons',consolidado:'cons',cerrado:'cerr',anulado:'anul'};
   return m[st]||'pend';
 }
 function statusLabel(st){
-  return {pendiente:'Pendiente',pesado:'Pesado',facturado:'Facturado',consolidado:'Consolidado',cerrado:'Cerrado',anulado:'Anulado'}[st]||st;
+  return {pendiente:'Pendiente',acomodando:'Acomodándose…',acomodado:'Acomodado',remisionado:'Remisionado',pesado:'Acomodado',facturado:'Remisionado',consolidado:'Consolidado',cerrado:'Cerrado',anulado:'Anulado'}[st]||st;
 }
 
-/* ---------- operario ---------- */
-function renderWorker(){
-  const pending=DB.orders.filter(o=>o.status==='pendiente'&&o.status!=='anulado').sort((a,b)=>a.date.localeCompare(b.date)||a.time.localeCompare(b.time));
-  $('#workerBody').innerHTML=`
-    <p style="font-size:13px;color:var(--ink-soft);font-weight:700;margin-bottom:10px">Registra el peso real de cada producto antes de facturar.</p>
-    ${pending.map(o=>workerOrderRow(o)).join('')||'<div class="empty"><span class="ee">✅</span><b class="display">Sin pedidos por pesar</b></div>'}`;
-}
-function workerOrderRow(o){
-  const c=DB.clients.find(x=>x.id===o.clientId)||{};
-  return `<div class="list-row pop" onclick="openWeighOrder('${o.id}')">
-    <span class="le">${c.emoji||'🏪'}</span>
-    <div class="lt"><b>${c.name||'—'}</b><span>${o.time} · ${shiftLabel(o.shift)} · ${o.items.length} productos${o.description?' · '+o.description:''}</span></div>
-    <span class="chip pend">Pesar</span></div>`;
-}
-function openWeighOrder(id){
-  const o=DB.orders.find(x=>x.id===id); if(!o)return;
-  normOrder(o);
-  const rows=o.items.map((it,i)=>{
-    const p=DB.products.find(x=>x.id===it.p)||{};
-    return `<div class="rev-row"><span class="re">${p.emoji||'🥬'}</span>
-      <div class="rn"><b>${p.name}</b><span>Pedido: ${it.q} ${fmtUnit(it.u)}</span></div>
-      <input class="qty-in" style="width:70px" inputmode="decimal" id="w_${i}" value="${it.w!=null?it.w:''}" placeholder="Peso">
-      <select id="wu_${i}" style="border:2px solid var(--line);border-radius:10px;padding:7px;font-weight:700">
-        ${UNITS.map(u=>`<option value="${u.id}" ${(it.wUnit||it.u)===u.id?'selected':''}>${u.short}</option>`).join('')}
-      </select></div>`;
-  }).join('');
-  openSheet('⚖️ Pesar pedido — '+clientName(o.clientId),rows,
-    [{label:'💾 Guardar pesos',cls:'green',fn:async()=>{
-      o.items.forEach((it,i)=>{
-        const w=parseFloat($('#w_'+i).value);
-        if(!isNaN(w)&&w>0){it.w=w;it.wUnit=$('#wu_'+i).value;}
-      });
-      o.status='pesado'; o.weighedBy=session.name; o.weighedAt=new Date().toISOString();
-      audit('Pesó pedido',clientName(o.clientId)+' · '+o.date); await flushSave(); closeSheet(); renderWorker(); toast('Pesos guardados ✅');
-    }}]);
-}
 
-/* ---------- modal pedido admin ---------- */
-function openOrderDetail(id){
-  const o=DB.orders.find(x=>x.id===id); if(!o)return;
-  normOrder(o);
-  const c=DB.clients.find(x=>x.id===o.clientId)||{};
-  const isAdmin=session.role==='admin';
-  const canPrice=isAdmin&&o.status==='pesado';
-  const canRemision=isAdmin&&o.status==='facturado'&&o.remisionNo;
-  const rows=o.items.map((it,i)=>{
-    const p=DB.products.find(x=>x.id===it.p)||{};
-    const priced=it.unitPrice!=null;
-    return `<div class="rev-row">
-      <span class="re">${p.emoji||'🥬'}</span>
-      <div class="rn"><b>${p.name}</b>
-        <span>Pedido: ${it.q} ${fmtUnit(it.u)}${it.w!=null?' · Peso real: '+it.w+' '+fmtUnit(it.wUnit||it.u):''}</span>
-        ${priced?`<span>💲 ${fmtMoney(it.unitPrice)}/${fmtUnit(it.priceUnit)} = <b>${fmtMoney(it.total)}</b></span>`:''}
-      </div>
-      ${canPrice?`<input class="qty-in" style="width:80px" id="pu_${i}" inputmode="decimal" value="${it.unitPrice||''}" placeholder="$/u">
-        <select id="punit_${i}" style="border:2px solid var(--line);border-radius:10px;padding:6px;font-weight:700;font-size:12px">
-          ${UNITS.map(u=>`<option value="${u.id}" ${(it.priceUnit||it.u)===u.id?'selected':''}>/${u.short}</option>`).join('')}
-        </select>`:''}
-    </div>`;
-  }).join('');
-  const btns=[];
-  if(canPrice) btns.push({label:'💲 Guardar precios y facturar',cls:'green',fn:async()=>{
-    o.items.forEach((it,i)=>{
-      const up=parseFloat($('#pu_'+i).value);
-      if(!isNaN(up)&&up>=0){
-        it.unitPrice=up; it.priceUnit=$('#punit_'+i).value;
-        const w=it.w!=null?+it.w:+it.q;
-        it.total=Math.round(w*up);
-      }
-    });
-    o.remisionNo=nextRemisionNo();
-    o.status='facturado'; o.pricedBy=session.name; o.pricedAt=new Date().toISOString();
-    audit('Facturó pedido','Remisión '+o.remisionNo+' · '+c.name); await flushSave(); closeSheet(); adminNav(adminTab); toast('Remisión #'+o.remisionNo+' generada');
-  }});
-  if(canRemision||o.remisionNo) btns.push({label:'📄 PDF remisión',cls:'yellow',fn:()=>{closeSheet();printRemision([o]);}});
-  if(isAdmin&&o.status!=='anulado') btns.push({label:'🗑️ Anular',cls:'orange',fn:()=>voidOrder(o.id)});
-  openSheet(`📦 Pedido — ${c.name}`,`
-    <div style="font-size:13px;font-weight:700;color:var(--ink-soft);margin-bottom:10px">
-      ${fmtDate(o.date)} · ${o.time} · ${shiftLabel(o.shift)} · Entrega: ${o.deliveryTime||'—'}
-      ${o.description?'<br>📝 '+o.description:''}
-      ${o.remisionNo?'<br>📄 Remisión Nº '+o.remisionNo:''}
-      <br>Estado: <b>${statusLabel(o.status)}</b>${o.weighedBy?' · Pesado por '+o.weighedBy:''}
-    </div>${rows}
-    ${canPrice?'<p style="font-size:12px;color:var(--ink-soft);font-weight:700;margin-top:8px">Solo la administradora define precios del día.</p>':''}
-    ${o.status==='facturado'?`<div style="text-align:right;font-family:Fredoka;font-size:22px;font-weight:700;color:var(--green);margin-top:10px">Total: $${fmtMoney(orderTotal(o))}</div>`:''}`,
-    btns);
+/* ---------- operario: ver workflow.js ---------- */
+
+/* ---------- modal pedido admin: ver workflow.js openOrderDetail ---------- */
+function openOrderDetail(id,readOnly){
+  if(typeof window._openOrderDetail==='function') return window._openOrderDetail(id,readOnly);
 }
 
 /* ---------- PDF remisión ---------- */
@@ -292,28 +212,19 @@ function openAddPurchase(){
 }
 
 function renderOrders(){
-  const list=DB.orders.filter(o=>o.date===ordersDate&&!o.anulado).sort((a,b)=>b.time.localeCompare(a.time));
-  $('#adminBody').innerHTML=`
-    ${ORDER_GUIDE}
-    <div class="card pop" style="padding:12px;margin-bottom:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <b class="display" style="font-size:17px">📦 Pedidos del día</b><div class="spacer"></div>
-      <input type="date" value="${ordersDate}" onchange="ordersDate=this.value;renderOrders()" style="border:2px solid var(--line);border-radius:11px;padding:8px;font-weight:700">
-    </div>
-    <button class="btn orange block" style="margin-bottom:10px" onclick="openManualOrder()">✍️ Registrar pedido manual</button>
-    ${list.map(o=>orderRowHTML(o)).join('')||`<div class="empty"><span class="ee">📭</span><b class="display">Sin pedidos ese día</b></div>`}`;
+  if(typeof window._renderOrdersImpl==='function') return window._renderOrdersImpl();
 }
 
 function orderRowHTML(o){
+  if(typeof window._orderRowHTML==='function') return window._orderRowHTML(o);
   normOrder(o);
   const c=DB.clients.find(x=>x.id===o.clientId)||{};
   const det=o.items.map(it=>itemLabel(it)).join(', ');
   const ch={app:'📱',voz:'🎙️',foto:'📸',manual:'✍️'}[o.channel]||'📱';
   return `<div class="list-row" style="cursor:pointer" onclick="openOrderDetail('${o.id}')">
     <span class="le">${c.emoji||'🏪'}</span>
-    <div class="lt"><b>${c.name||'—'} <small style="font-weight:700;color:var(--ink-soft)">${ch} ${o.time}${o.deliveryTime?' · 🕐 '+o.deliveryTime:''}</small></b>
-      <span>${det}${o.description?' · 📝 '+o.description:''}</span>
-      ${o.remisionNo?`<span style="color:var(--green)">📄 Remisión ${o.remisionNo}</span>`:''}
-    </div>
+    <div class="lt"><b>${c.name||'—'} <small style="font-weight:700;color:var(--ink-soft)">${ch} ${o.time}</small></b>
+      <span>${det}</span></div>
     <span class="chip ${statusChip(o.status)}">${statusLabel(o.status)}</span>
   </div>`;
 }
