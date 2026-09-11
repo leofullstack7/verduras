@@ -766,14 +766,14 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
 </div>
 <div id="printArea" style="display:none"></div>
 
-<!-- build: 20260911l worker-historial -->
-<script>window.APP_BUILD='20260911l';</script>
-<script src="time.js?v=20260911l"></script>
-<script src="catalog.js?v=20260911l"></script>
-<script src="catalog-ext.js?v=20260911l"></script>
-<script src="order-specials.js?v=20260911l"></script>
-<script src="units.js?v=20260911l"></script>
-<script src="config.local.js?v=20260911l" onerror="window.FRUVER_CONFIG=window.FRUVER_CONFIG||{}"></script>
+<!-- build: 20260911m worker-historial -->
+<script>window.APP_BUILD='20260911m';</script>
+<script src="time.js?v=20260911m"></script>
+<script src="catalog.js?v=20260911m"></script>
+<script src="catalog-ext.js?v=20260911m"></script>
+<script src="order-specials.js?v=20260911m"></script>
+<script src="units.js?v=20260911m"></script>
+<script src="config.local.js?v=20260911m" onerror="window.FRUVER_CONFIG=window.FRUVER_CONFIG||{}"></script>
 <script>
 /* ============================================================
    FRUVER PEDIDOS — SPA demo (fase de prototipo de interfaz)
@@ -2297,15 +2297,33 @@ window.addEventListener('resize',()=>{if(session&&session.role==='client'&&$('#v
 
 /* ---------- arranque (init al final, tras features.js) ---------- */
 </script>
-<script src="features.js?v=20260911l"></script>
-<script src="compras.js?v=20260911l"></script>
-<script src="proveedores.js?v=20260911l"></script>
-<script src="interpret.js?v=20260911l"></script>
-<script src="workflow.js?v=20260911l"></script>
-<script src="messaging.js?v=20260911l"></script>
+<script src="features.js?v=20260911m"></script>
+<script src="compras.js?v=20260911m"></script>
+<script src="proveedores.js?v=20260911m"></script>
+<script src="interpret.js?v=20260911m"></script>
+<script src="workflow.js?v=20260911m"></script>
+<script src="messaging.js?v=20260911m"></script>
 <script>
+async function checkForNewBuild(){
+  try{
+    let html='';
+    if(IS_IOS){
+      const r=await xhrRequest('GET',apiUrl('/index.html'),null);
+      if(!r.ok) return;
+      html=typeof r.body==='string'?r.body:(await fetch(apiUrl('/index.html'),{cache:'no-store'}).then(x=>x.text()));
+    }else{
+      html=await fetch(apiUrl('/index.html'),{cache:'no-store',credentials:'same-origin'}).then(r=>r.ok?r.text():'');
+    }
+    const live=html.match(/APP_BUILD='([^']+)'/)?.[1];
+    const st=$('#buildStamp');
+    if(!st||!live||!window.APP_BUILD||live===window.APP_BUILD) return;
+    st.innerHTML=`Versión ${window.APP_BUILD} · <button type="button" onclick="location.reload()" style="background:none;border:none;color:var(--orange);font:inherit;font-weight:800;text-decoration:underline;cursor:pointer;padding:0">Hay ${live} — actualizar</button>`;
+  }catch(e){/* ignore */}
+}
+
 (async function init(){
   const st=$('#buildStamp'); if(st) st.textContent='Versión '+ (window.APP_BUILD||'?');
+  checkForNewBuild();
   await loadDB(false,{silent:true});
   migrateDB();
   if(typeof applyCatalogExtensions==='function') applyCatalogExtensions();
