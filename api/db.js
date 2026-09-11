@@ -1,48 +1,54 @@
-const { neon } = require('@neondatabase/serverless');
-
-const ROW_ID = 'main';
+const { getClient, fetchDB, persistDB } = require('../lib/db-bridge');
+const { validateLogin, parseJsonBody } = require('../lib/login');
 
 function cors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+}
+
+function isLoginAction(req) {
+  const q = req.query || {};
+  if (q.action === 'login') return true;
+  const url = req.url || '';
+  return url.includes('action=login');
 }
 
 module.exports = async (req, res) => {
   cors(res);
   if (req.method === 'OPTIONS') return res.status(204).end();
 
-  const url = process.env.DATABASE_URL;
-  if (!url) return res.status(500).json({ error: 'DATABASE_URL no configurada' });
-
-  const sql = neon(url);
-
   try {
+    const supabase = getClient();
+
+    if (req.method === 'POST' && isLoginAction(req)) {
+      const body = parseJsonBody(req);
+      const result = await validateLogin(supabase, body.username, body.password);
+      if (result.error) {
+        return res.status(result.status || 401).json({ ok: false, error: result.error });
+      }
+      return res.status(200).json(result);
+    }
+
     if (req.method === 'GET') {
-      const rows = await sql`SELECT data, updated_at FROM app_data WHERE id = ${ROW_ID}`;
-      if (!rows.length) return res.status(200).json({ data: null, updatedAt: null });
-      return res.status(200).json({ data: rows[0].data, updatedAt: rows[0].updated_at });
+      const data = await fetchDB(supabase);
+      if (!data) return res.status(200).json({ data: null, updatedAt: null });
+      const { data: cfg } = await supabase.from('app_config').select('updated_at').eq('id', 'main').maybeSingle();
+      return res.status(200).json({ data, updatedAt: cfg?.updated_at || null });
     }
 
     if (req.method === 'PUT') {
-      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const body = parseJsonBody(req);
       if (!body || typeof body !== 'object') {
         return res.status(400).json({ error: 'Cuerpo JSON inválido' });
       }
-      const payload = JSON.stringify(body);
-      const rows = await sql`
-        INSERT INTO app_data (id, data, updated_at)
-        VALUES (${ROW_ID}, ${payload}::jsonb, NOW())
-        ON CONFLICT (id) DO UPDATE
-        SET data = EXCLUDED.data, updated_at = NOW()
-        RETURNING updated_at
-      `;
-      return res.status(200).json({ ok: true, updatedAt: rows[0].updated_at });
+      const updatedAt = await persistDB(supabase, body);
+      return res.status(200).json({ ok: true, updatedAt });
     }
 
     return res.status(405).json({ error: 'Método no permitido' });
   } catch (err) {
     console.error('api/db error', err);
-    return res.status(500).json({ error: 'Error de base de datos' });
+    return res.status(500).json({ error: err.message || 'Error de base de datos' });
   }
 };
