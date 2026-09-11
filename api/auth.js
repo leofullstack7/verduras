@@ -6,15 +6,27 @@ function cors(res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
+function parseBody(req) {
+  const raw = req.body;
+  if (raw == null || raw === '') return {};
+  if (typeof raw === 'object' && !Buffer.isBuffer(raw)) return raw;
+  const str = Buffer.isBuffer(raw) ? raw.toString('utf8') : String(raw);
+  try {
+    return JSON.parse(str);
+  } catch {
+    return {};
+  }
+}
+
 module.exports = async (req, res) => {
   cors(res);
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Método no permitido' });
 
   try {
-    const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-    const username = String(body?.username || '').trim().toLowerCase();
-    const password = String(body?.password ?? '');
+    const body = parseBody(req);
+    const username = String(body.username || '').trim().toLowerCase();
+    const password = String(body.password ?? '');
     if (!username || !password) {
       return res.status(400).json({ error: 'Usuario y contraseña requeridos' });
     }
@@ -33,7 +45,7 @@ module.exports = async (req, res) => {
 
     const { data: workers, error: workerErr } = await supabase
       .from('workers')
-      .select('id, name, username, password_hash, activo')
+      .select('*')
       .eq('username', username);
     if (workerErr) throw workerErr;
     const worker = (workers || []).find((w) => w.activo !== false && w.password_hash === password);
@@ -43,7 +55,7 @@ module.exports = async (req, res) => {
 
     const { data: clients, error: clientErr } = await supabase
       .from('clients')
-      .select('id, name, username, password_hash')
+      .select('*')
       .eq('username', username);
     if (clientErr) throw clientErr;
     const client = (clients || []).find((c) => c.password_hash === password);
