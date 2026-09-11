@@ -764,14 +764,14 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
 </div>
 <div id="printArea" style="display:none"></div>
 
-<!-- build: 20260911c login-fresh-credentials -->
-<script>window.APP_BUILD='20260911c';</script>
-<script src="time.js?v=20260911c"></script>
-<script src="catalog.js?v=20260911c"></script>
-<script src="catalog-ext.js?v=20260911c"></script>
-<script src="order-specials.js?v=20260911c"></script>
-<script src="units.js?v=20260911c"></script>
-<script src="config.local.js?v=20260911c" onerror="window.FRUVER_CONFIG=window.FRUVER_CONFIG||{}"></script>
+<!-- build: 20260911d server-auth-login -->
+<script>window.APP_BUILD='20260911d';</script>
+<script src="time.js?v=20260911d"></script>
+<script src="catalog.js?v=20260911d"></script>
+<script src="catalog-ext.js?v=20260911d"></script>
+<script src="order-specials.js?v=20260911d"></script>
+<script src="units.js?v=20260911d"></script>
+<script src="config.local.js?v=20260911d" onerror="window.FRUVER_CONFIG=window.FRUVER_CONFIG||{}"></script>
 <script>
 /* ============================================================
    FRUVER PEDIDOS — SPA demo (fase de prototipo de interfaz)
@@ -1309,24 +1309,45 @@ async function doLogin(){
   const pass=$('#loginPass').value;
   if(!user||!pass){toast('Ingresa usuario y contraseña');return;}
   showAppLoader('Verificando…');
-  await loadDB(true,{silent:true});
-  hideAppLoader();
-  const admin=DB.admin||SEED_ADMIN;
-  if(user===admin.username.toLowerCase()&&pass===admin.password){
-    session={role:'admin',name:admin.name}; saveSession(); startSync(); adminNav('dash'); showView('v-admin'); return;
+  try{
+    const res=await fetch('/api/auth',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({username:user,password:pass}),
+    });
+    let auth=null;
+    try{auth=await res.json();}catch(e){auth=null;}
+    if(!res.ok){
+      hideAppLoader();
+      if(res.status===401){
+        $('#loginPass').value='';
+        $('#loginPass').closest('.field').classList.add('wiggle');
+        setTimeout(()=>$('#loginPass').closest('.field').classList.remove('wiggle'),500);
+        toast(auth?.error||'Usuario o contraseña incorrectos');
+      }else if(res.status>=500){
+        toast('Error del servidor. Intenta de nuevo en unos segundos.');
+      }else{
+        toast('No se pudo verificar el acceso. Revisa tu internet.');
+      }
+      return;
+    }
+    await loadDB(true,{silent:true});
+    hideAppLoader();
+    if(auth.role==='admin'){
+      session={role:'admin',name:auth.name}; saveSession(); startSync(); adminNav('dash'); showView('v-admin'); return;
+    }
+    if(auth.role==='worker'){
+      session={role:'worker',id:auth.id,name:auth.name}; saveSession(); startSync(); $('#workerSub').textContent=fmtDate(todayStr()); renderWorker(); showView('v-worker'); return;
+    }
+    if(auth.role==='client'){
+      session={role:'client',id:auth.id,name:auth.name}; saveSession(); startSync(); cart={}; nav('order'); return;
+    }
+    toast('Respuesta de acceso inválida');
+  }catch(e){
+    hideAppLoader();
+    console.error('doLogin',e);
+    toast('Sin conexión. Revisa tu internet e intenta de nuevo.');
   }
-  const worker=(DB.workers||[]).find(w=>w.username?.toLowerCase()===user&&w.password===pass);
-  if(worker){
-    session={role:'worker',id:worker.id,name:worker.name}; saveSession(); startSync(); $('#workerSub').textContent=fmtDate(todayStr()); renderWorker(); showView('v-worker'); return;
-  }
-  const client=DB.clients.find(c=>c.username?.toLowerCase()===user&&c.password===pass);
-  if(client){
-    session={role:'client',id:client.id,name:client.name}; saveSession(); startSync(); cart={}; nav('order'); return;
-  }
-  $('#loginPass').value='';
-  $('#loginPass').closest('.field').classList.add('wiggle');
-  setTimeout(()=>$('#loginPass').closest('.field').classList.remove('wiggle'),500);
-  toast('Usuario o contraseña incorrectos');
 }
 
 /* ---------- modal genérico ---------- */
@@ -2182,12 +2203,12 @@ window.addEventListener('resize',()=>{if(session&&session.role==='client'&&$('#v
 
 /* ---------- arranque (init al final, tras features.js) ---------- */
 </script>
-<script src="features.js?v=20260911c"></script>
-<script src="compras.js?v=20260911c"></script>
-<script src="proveedores.js?v=20260911c"></script>
-<script src="interpret.js?v=20260911c"></script>
-<script src="workflow.js?v=20260911c"></script>
-<script src="messaging.js?v=20260911c"></script>
+<script src="features.js?v=20260911d"></script>
+<script src="compras.js?v=20260911d"></script>
+<script src="proveedores.js?v=20260911d"></script>
+<script src="interpret.js?v=20260911d"></script>
+<script src="workflow.js?v=20260911d"></script>
+<script src="messaging.js?v=20260911d"></script>
 <script>
 (async function init(){
   const st=$('#buildStamp'); if(st) st.textContent='Versión '+ (window.APP_BUILD||'?');
