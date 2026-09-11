@@ -764,14 +764,14 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
 </div>
 <div id="printArea" style="display:none"></div>
 
-<!-- build: 20260911b loadDB-toast-login-fix -->
-<script>window.APP_BUILD='20260911b';</script>
-<script src="time.js?v=20260911b"></script>
-<script src="catalog.js?v=20260911b"></script>
-<script src="catalog-ext.js?v=20260911b"></script>
-<script src="order-specials.js?v=20260911b"></script>
-<script src="units.js?v=20260911b"></script>
-<script src="config.local.js?v=20260911b" onerror="window.FRUVER_CONFIG=window.FRUVER_CONFIG||{}"></script>
+<!-- build: 20260911c login-fresh-credentials -->
+<script>window.APP_BUILD='20260911c';</script>
+<script src="time.js?v=20260911c"></script>
+<script src="catalog.js?v=20260911c"></script>
+<script src="catalog-ext.js?v=20260911c"></script>
+<script src="order-specials.js?v=20260911c"></script>
+<script src="units.js?v=20260911c"></script>
+<script src="config.local.js?v=20260911c" onerror="window.FRUVER_CONFIG=window.FRUVER_CONFIG||{}"></script>
 <script>
 /* ============================================================
    FRUVER PEDIDOS — SPA demo (fase de prototipo de interfaz)
@@ -1304,10 +1304,13 @@ function resetLoginForm(){
   const u=$('#loginUser'),p=$('#loginPass');
   if(u) u.value=''; if(p) p.value='';
 }
-function doLogin(){
+async function doLogin(){
   const user=$('#loginUser').value.trim().toLowerCase();
   const pass=$('#loginPass').value;
   if(!user||!pass){toast('Ingresa usuario y contraseña');return;}
+  showAppLoader('Verificando…');
+  await loadDB(true,{silent:true});
+  hideAppLoader();
   const admin=DB.admin||SEED_ADMIN;
   if(user===admin.username.toLowerCase()&&pass===admin.password){
     session={role:'admin',name:admin.name}; saveSession(); startSync(); adminNav('dash'); showView('v-admin'); return;
@@ -2139,7 +2142,8 @@ function openWorkerForm(id){
         audit('Creó operario',name+' · usuario '+username);
       }
       closeSheet(); renderWorkers();
-      flushSave().then(()=>toast('Operario guardado ✅'));
+      showAppLoader('Guardando operario…');
+      flushSave().then(()=>toast('Operario guardado ✅')).catch(()=>toast('No se pudo guardar — intenta de nuevo')).finally(()=>hideAppLoader());
     }}]);
 }
 
@@ -2178,12 +2182,12 @@ window.addEventListener('resize',()=>{if(session&&session.role==='client'&&$('#v
 
 /* ---------- arranque (init al final, tras features.js) ---------- */
 </script>
-<script src="features.js?v=20260911b"></script>
-<script src="compras.js?v=20260911b"></script>
-<script src="proveedores.js?v=20260911b"></script>
-<script src="interpret.js?v=20260911b"></script>
-<script src="workflow.js?v=20260911b"></script>
-<script src="messaging.js?v=20260911b"></script>
+<script src="features.js?v=20260911c"></script>
+<script src="compras.js?v=20260911c"></script>
+<script src="proveedores.js?v=20260911c"></script>
+<script src="interpret.js?v=20260911c"></script>
+<script src="workflow.js?v=20260911c"></script>
+<script src="messaging.js?v=20260911c"></script>
 <script>
 (async function init(){
   const st=$('#buildStamp'); if(st) st.textContent='Versión '+ (window.APP_BUILD||'?');
