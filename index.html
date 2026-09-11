@@ -764,14 +764,14 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
 </div>
 <div id="printArea" style="display:none"></div>
 
-<!-- build: 20260911a worker-sync-fixes -->
-<script>window.APP_BUILD='20260911a';</script>
-<script src="time.js?v=20260911a"></script>
-<script src="catalog.js?v=20260911a"></script>
-<script src="catalog-ext.js?v=20260911a"></script>
-<script src="order-specials.js?v=20260911a"></script>
-<script src="units.js?v=20260911a"></script>
-<script src="config.local.js?v=20260911a" onerror="window.FRUVER_CONFIG=window.FRUVER_CONFIG||{}"></script>
+<!-- build: 20260911b loadDB-toast-login-fix -->
+<script>window.APP_BUILD='20260911b';</script>
+<script src="time.js?v=20260911b"></script>
+<script src="catalog.js?v=20260911b"></script>
+<script src="catalog-ext.js?v=20260911b"></script>
+<script src="order-specials.js?v=20260911b"></script>
+<script src="units.js?v=20260911b"></script>
+<script src="config.local.js?v=20260911b" onerror="window.FRUVER_CONFIG=window.FRUVER_CONFIG||{}"></script>
 <script>
 /* ============================================================
    FRUVER PEDIDOS — SPA demo (fase de prototipo de interfaz)
@@ -859,6 +859,8 @@ function seedOrders(){
 
 /* ---------- base de datos (API Neon Postgres en producción) ---------- */
 let DB=null, dbUpdatedAt=null, syncTimer=null, syncInFlight=false, syncActive=false, saveT=null, saving=false, saveQueued=false;
+let loadDBToastAt=0;
+const LOADDB_TOAST_COOLDOWN=20000;
 let loaderDepth=0;
 const API_DB='/api/db';
 
@@ -886,9 +888,18 @@ function defaultDB(){
 
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
-async function loadDB(force=false){
-  const backoffs=[400,1000,2000];
+function loadDBShowRetryToast(){
+  const now=Date.now();
+  if(now-loadDBToastAt<LOADDB_TOAST_COOLDOWN) return;
+  loadDBToastAt=now;
+  toast('Sin conexión, reintentando…');
+}
+
+async function loadDB(force=false,opts={}){
+  const silent=!!opts.silent;
+  const backoffs=opts.backoffs||[600,1500,3000];
   let lastErr=null;
+  let showedRetryToast=false;
   for(let attempt=0;attempt<=backoffs.length;attempt++){
     try{
       const res=await fetch(API_DB,{cache:'no-store'});
@@ -911,7 +922,10 @@ async function loadDB(force=false){
     }catch(e){
       lastErr=e;
       if(attempt<backoffs.length){
-        toast('Sin conexión, reintentando…');
+        if(!silent&&session&&!showedRetryToast){
+          loadDBShowRetryToast();
+          showedRetryToast=true;
+        }
         await sleep(backoffs[attempt]);
         continue;
       }
@@ -919,6 +933,7 @@ async function loadDB(force=false){
   }
   console.error('loadDB',lastErr);
   if(!DB){DB=defaultDB();migrateDB();}
+  if(!silent&&session&&!showedRetryToast) loadDBShowRetryToast();
   return false;
 }
 
@@ -2163,16 +2178,16 @@ window.addEventListener('resize',()=>{if(session&&session.role==='client'&&$('#v
 
 /* ---------- arranque (init al final, tras features.js) ---------- */
 </script>
-<script src="features.js?v=20260911a"></script>
-<script src="compras.js?v=20260911a"></script>
-<script src="proveedores.js?v=20260911a"></script>
-<script src="interpret.js?v=20260911a"></script>
-<script src="workflow.js?v=20260911a"></script>
-<script src="messaging.js?v=20260911a"></script>
+<script src="features.js?v=20260911b"></script>
+<script src="compras.js?v=20260911b"></script>
+<script src="proveedores.js?v=20260911b"></script>
+<script src="interpret.js?v=20260911b"></script>
+<script src="workflow.js?v=20260911b"></script>
+<script src="messaging.js?v=20260911b"></script>
 <script>
 (async function init(){
   const st=$('#buildStamp'); if(st) st.textContent='Versión '+ (window.APP_BUILD||'?');
-  await loadDB();
+  await loadDB(false,{silent:true});
   migrateDB();
   if(typeof applyCatalogExtensions==='function') applyCatalogExtensions();
   if(!restoreSession()) resetLoginForm();
