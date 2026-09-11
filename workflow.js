@@ -70,20 +70,35 @@ function ordersVisibleToWorkers(o){
   return true;
 }
 
-/** Pedidos que debe ver el operario (confirmados, listos para agarrar o en curso). */
-function ordersForWorkers(){
+function workerOrderSort(a,b){
+  const da=orderDeliveryDate(a),db=orderDeliveryDate(b);
+  if(da!==db) return da.localeCompare(db);
+  return sortByDeliveryTime(a,b);
+}
+
+/** Pedidos del día de entrega = hoy (pantalla principal del operario). */
+function ordersForWorkersToday(){
   const today=todayStr();
   return DB.orders.filter(o=>{
     if(!ordersVisibleToWorkers(o)) return false;
     if(['cerrado','remisionado','anulado'].includes(o.status)) return false;
-    if(o.status==='pendiente'||o.status==='acomodando') return true;
-    if(o.status==='acomodado') return orderDeliveryDate(o)===today;
     return orderDeliveryDate(o)===today;
-  }).sort((a,b)=>{
-    const da=orderDeliveryDate(a),db=orderDeliveryDate(b);
-    if(da!==db) return da.localeCompare(db);
-    return sortByDeliveryTime(a,b);
-  });
+  }).sort(workerOrderSort);
+}
+
+/** Pedidos viejos que quedaron pendientes o acomodándose (historial). */
+function ordersForWorkersHistory(){
+  const today=todayStr();
+  return DB.orders.filter(o=>{
+    if(!ordersVisibleToWorkers(o)) return false;
+    if(!['pendiente','acomodando'].includes(o.status)) return false;
+    return orderDeliveryDate(o)<today;
+  }).sort(workerOrderSort);
+}
+
+/** @deprecated usar ordersForWorkersToday */
+function ordersForWorkers(){
+  return ordersForWorkersToday();
 }
 
 function notifyWorkersNewOrder(o){
@@ -219,26 +234,59 @@ function updateWorkerNewOrdersBadge(){
     el.hidden=true;
     return;
   }
-  const n=ordersForWorkers().filter(o=>!workerAcomodoListBaseline.has(o.id)).length;
+  const n=ordersForWorkersToday().filter(o=>!workerAcomodoListBaseline.has(o.id)).length;
   if(n>0){
     el.hidden=false;
     el.textContent=`🔔 ${n} pedido${n>1?'s':''} nuevo${n>1?'s':''}`;
   }else el.hidden=true;
 }
 
+let workerTab='list';
+
+function setWorkerNavTab(tab){
+  workerTab=tab;
+  $$('.worker-nav-inner .nav-btn').forEach(btn=>{
+    const t=btn.dataset.workerNav;
+    btn.classList.toggle('on',t===tab);
+  });
+}
+
+function workerNav(tab){
+  showView('v-worker');
+  if(tab==='avisos'){openNotifTray();return;}
+  setWorkerNavTab(tab);
+  if(tab==='history') renderWorkerHistory();
+  else renderWorker();
+}
+
 function renderWorker(){
   workerAcomodoListBaseline=null;
   updateWorkerNewOrdersBadge();
-  const list=ordersForWorkers();
+  setWorkerNavTab('list');
+  const list=ordersForWorkersToday();
   const today=todayStr();
+  $('#workerTitle').textContent='Acomodar pedidos';
+  $('#workerSub').textContent=fmtDate(today);
   $('#workerBody').innerHTML=`
-    <p style="font-size:13px;color:var(--ink-soft);font-weight:700;margin-bottom:10px">Pedidos confirmados — aparecen al instante cuando Olga confirma. Toca para agarrar.</p>
+    <p style="font-size:13px;color:var(--ink-soft);font-weight:700;margin-bottom:10px">Pedidos de hoy (${fmtDate(today)}). Aparecen al instante cuando Olga confirma.</p>
+    ${list.map(o=>orderCardHTML(o,{onclick:`workerTapOrder('${o.id}')`,worker:true})).join('')||
+      '<div class="empty"><span class="ee">✅</span><b class="display">Sin pedidos para hoy</b><span>Cuando Olga confirme un pedido de hoy aparecerá aquí al instante</span></div>'}`;
+  renderNotifFab();
+  renderAcomodoBubble();
+}
+
+function renderWorkerHistory(){
+  setWorkerNavTab('history');
+  const list=ordersForWorkersHistory();
+  $('#workerTitle').textContent='Historial';
+  $('#workerSub').textContent='Pendientes o acomodándose de días anteriores';
+  $('#workerBody').innerHTML=`
+    <p style="font-size:13px;color:var(--ink-soft);font-weight:700;margin-bottom:10px">Pedidos que quedaron sin terminar en días pasados. Toca para agarrar o continuar.</p>
     ${list.map(o=>{
       const del=orderDeliveryDate(o);
-      const delLbl=del!==today?` · 📅 entrega ${fmtDate(del)}`:'';
-      return orderCardHTML(o,{onclick:`workerTapOrder('${o.id}')`,worker:true,extraSub:delLbl});
+      return orderCardHTML(o,{onclick:`workerTapOrder('${o.id}')`,worker:true,extraSub:` · 📅 entrega ${fmtDate(del)}`});
     }).join('')||
-      '<div class="empty"><span class="ee">✅</span><b class="display">Sin pedidos pendientes</b><span>Cuando Olga confirme un pedido aparecerá aquí al instante</span></div>'}`;
+      '<div class="empty"><span class="ee">📋</span><b class="display">Sin pendientes atrasados</b><span>No hay pedidos viejos en pendiente o acomodándose</span></div>'}`;
   renderNotifFab();
   renderAcomodoBubble();
 }
@@ -276,7 +324,7 @@ function openWorkerAcomodoPage(id,readOnly){
   normOrder(o);
   window._workerAcomodoId=id;
   window._workerAcomodoReadOnly=!!readOnly||!(o.status==='acomodando'&&o.operarioId===session.id);
-  workerAcomodoListBaseline=new Set(ordersForWorkers().map(x=>x.id));
+  workerAcomodoListBaseline=new Set(ordersForWorkersToday().map(x=>x.id));
   renderWorkerAcomodoPage();
   showView('v-worker-acomodo');
 }
@@ -1090,6 +1138,10 @@ window.saveOrderPrices=saveOrderPrices;
 window.formatOrderPriceBlur=formatOrderPriceBlur;
 window.ordersVisibleToWorkers=ordersVisibleToWorkers;
 window.ordersForWorkers=ordersForWorkers;
+window.ordersForWorkersToday=ordersForWorkersToday;
+window.ordersForWorkersHistory=ordersForWorkersHistory;
+window.workerNav=workerNav;
+window.renderWorkerHistory=renderWorkerHistory;
 window.itemNeedsAcomodo=itemNeedsAcomodo;
 window.sortByDeliveryTime=sortByDeliveryTime;
 

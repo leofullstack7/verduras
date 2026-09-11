@@ -48,7 +48,10 @@ function goBackNav(){
   }
   showView(prev.view||'v-admin');
   if(prev.view==='v-admin') adminNav(prev.tab||adminTab||'dash');
-  else if(prev.view==='v-worker') renderWorker();
+  else if(prev.view==='v-worker'){
+    if(typeof workerTab!=='undefined'&&workerTab==='history'&&typeof renderWorkerHistory==='function') renderWorkerHistory();
+    else renderWorker();
+  }
 }
 
 function openSubView(viewId, state){
@@ -85,12 +88,55 @@ function applyDailyPricesToOrder(o){
   });
 }
 
-function deliveryDateForOrder(atTime){
-  return new Date().toISOString().slice(0,10);
+function deliveryDateForOrder(atTime, choice){
+  if(typeof deliveryDateFromChoice==='function') return deliveryDateFromChoice(choice||'manana',atTime);
+  return todayStr();
 }
 function deliveryDateLabel(dateStr){
   return fmtDate(dateStr);
 }
+
+function sendOlgaEntregaRequest({clientId,orderId,deliveryTime,delDate,description}){
+  ensureChatDB();
+  const conv=getOrCreateConversation(clientId,orderId||null);
+  const c=DB.clients.find(x=>x.id===clientId)||{};
+  const o=DB.orders.find(x=>x.id===orderId);
+  const hora=deliveryTime?fmtTime12(deliveryTime):'sin hora indicada';
+  const det=description?` · ${description}`:'';
+  const resumen=o?.items?.length?orderPreview(o,8):'Pedido en app';
+  const msg=`🙏 Solicito entrega para HOY (${fmtDate(delDate||todayStr())}) a las ${hora}${det}.\n\n${resumen}`;
+  sendChatMessage(conv.id,msg,{deRol:'client',deId:clientId,deNombre:c.name||'Cliente'});
+  addNotification('admin','solicitud',orderId,clientId,`${c.name||'Cliente'} solicita entrega HOY · ${hora}`);
+  if(typeof renderAdminTopActions==='function') renderAdminTopActions();
+  return conv;
+}
+
+function resolveEntregaSolicitud(orderId,decision){
+  const o=DB.orders.find(x=>x.id===orderId);
+  if(!o||o.entregaSolicitud?.estado!=='pendiente'){toast('Solicitud no encontrada o ya resuelta');return;}
+  ensureChatDB();
+  o.entregaSolicitud.estado=decision==='admitida'?'admitida':'denegada';
+  o.entregaSolicitud.resueltoEn=new Date().toISOString();
+  o.entregaSolicitud.resueltoPor=session?.name||'Olga';
+  const conv=getOrCreateConversation(o.clientId,o.id);
+  const hora=o.deliveryTime?fmtTime12(o.deliveryTime):'hora acordada';
+  if(decision==='admitida'){
+    sendChatMessage(conv.id,`✅ Olga admitió tu pedido para entrega HOY (${hora}). Te confirmará el pedido pronto.`,{deRol:'admin',deId:'admin',deNombre:'Olga'});
+    addNotification(o.clientId,'chat_mensaje',conv.id,'admin','Olga admitió entrega para hoy');
+    audit('Admitió entrega hoy',clientName(o.clientId));
+    toast('Entrega para hoy admitida ✅');
+  }else{
+    o.status='anulado';
+    sendChatMessage(conv.id,`❌ Olga no pudo admitir entrega para hoy (${hora}). El pedido fue cancelado; puedes volver a pedir para mañana.`,{deRol:'admin',deId:'admin',deNombre:'Olga'});
+    addNotification(o.clientId,'chat_mensaje',conv.id,'admin','Entrega para hoy no disponible');
+    audit('Denegó entrega hoy',clientName(o.clientId));
+    toast('Solicitud denegada');
+  }
+  flushSave();
+  if(typeof updateAdminNavBadges==='function') updateAdminNavBadges();
+}
+window.sendOlgaEntregaRequest=sendOlgaEntregaRequest;
+window.resolveEntregaSolicitud=resolveEntregaSolicitud;
 
 /* ---------- urgent requests → chat ---------- */
 function sendUrgentRequestViaChat({clientId,orderId,mensaje}){
@@ -145,21 +191,60 @@ function getOrCreateConversation(clientId,orderId){
   }
   return c;
 }
+function packMensajeTexto(msg){
+  if(msg.tipo==='audio'&&msg.audioUrl) return '__AUDIO__'+msg.audioUrl;
+  return msg.texto||'';
+}
+function unpackMensajeTexto(texto){
+  if(texto?.startsWith('__AUDIO__')){
+    return {tipo:'audio',audioUrl:texto.slice(9),texto:'🎤 Audio'};
+  }
+  return {tipo:'texto',texto:texto||'',audioUrl:null};
+}
+function chatDraftKey(convId){
+  return 'fruver_chat_draft_'+convId;
+}
+function saveChatDraft(){
+  const convId=window.activeChatId;
+  const inp=$('#chatInput');
+  if(!convId||!inp) return;
+  try{sessionStorage.setItem(chatDraftKey(convId),inp.value||'');}catch(e){}
+}
+function restoreChatDraft(){
+  const convId=window.activeChatId;
+  const inp=$('#chatInput');
+  if(!convId||!inp) return;
+  if(document.activeElement===inp) return;
+  try{
+    const d=sessionStorage.getItem(chatDraftKey(convId));
+    if(d!=null) inp.value=d;
+  }catch(e){}
+}
+function isChatComposeActive(){
+  const inp=$('#chatInput');
+  if(window._chatRecording) return true;
+  if(inp&&(document.activeElement===inp||inp.value?.trim())) return true;
+  return false;
+}
 function sendChatMessage(conversacionId,texto,opts={}){
   ensureChatDB();
   const conv=DB.conversaciones.find(x=>x.id===conversacionId);
-  if(!conv||!texto?.trim()) return;
+  const isAudio=opts.tipo==='audio'&&opts.audioUrl;
+  if(!conv||(!texto?.trim()&&!isAudio)) return;
   const msg={
     id:uid(),conversacionId,
     deRol:opts.deRol||session.role,
     deId:opts.deId||(session.role==='admin'?'admin':session.id),
     deNombre:opts.deNombre||session.name,
-    texto:texto.trim(),
+    tipo:isAudio?'audio':'texto',
+    texto:isAudio?'🎤 Audio':texto.trim(),
+    audioUrl:isAudio?opts.audioUrl:null,
     creadoEn:new Date().toISOString(),leido:false,
   };
+  msg.texto=packMensajeTexto(msg);
   DB.mensajes.push(msg);
   conv.actualizadoEn=msg.creadoEn;
-  conv.ultimoMensaje=texto.trim().slice(0,120);
+  conv.ultimoMensaje=isAudio?'🎤 Audio':texto.trim().slice(0,120);
   const targetUser=session.role==='admin'?conv.clientId:'admin';
   addNotification(targetUser,'chat_mensaje',conv.id,session.role==='admin'?'admin':session.id);
   saveDB();
@@ -185,11 +270,29 @@ function openChatView(conversacionId){
     }
   }
   window.activeChatId=conversacionId;
+  window._chatRenderedCount=0;
   renderChatPage();
   showView('v-chat');
   if(session?.role==='client') $$('[data-nav]').forEach(b=>b.classList.toggle('on',b.dataset.nav==='chat'));
 }
-function renderChatPage(){
+function renderChatBubble(m){
+  const mine=(session.role==='admin'&&m.deRol==='admin')||(session.role==='client'&&m.deRol==='client');
+  const unpacked=unpackMensajeTexto(m.texto);
+  const tipo=m.tipo||unpacked.tipo;
+  const audioUrl=m.audioUrl||unpacked.audioUrl;
+  let body='';
+  if(tipo==='audio'&&audioUrl){
+    body=`<audio controls preload="metadata" style="max-width:100%;min-width:180px"><source src="${audioUrl}"></audio>`;
+  }else{
+    body=`<span class="chat-txt">${escHtml(unpacked.texto||m.texto||'')}</span>`;
+  }
+  return `<div class="chat-bubble ${mine?'mine':'theirs'}" data-msg-id="${m.id}">
+    <span class="chat-who">${escHtml(m.deNombre||'')}</span>
+    ${body}
+    <span class="chat-time">${new Date(m.creadoEn).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}</span>
+  </div>`;
+}
+function renderChatPage(opts={}){
   ensureChatDB();
   const conv=DB.conversaciones.find(x=>x.id===window.activeChatId);
   if(!conv){goBackNav();return;}
@@ -201,27 +304,94 @@ function renderChatPage(){
   msgs.forEach(m=>{
     if(session.role!=='admin'&&m.deRol==='admin') m.leido=true;
     if(session.role==='admin'&&m.deRol==='client') m.leido=true;
+    const u=unpackMensajeTexto(m.texto);
+    if(u.tipo==='audio'){m.tipo='audio';m.audioUrl=u.audioUrl;}
   });
   saveDB();
-  $('#chatBody').innerHTML=msgs.map(m=>{
-    const mine=(session.role==='admin'&&m.deRol==='admin')||(session.role==='client'&&m.deRol==='client');
-    return `<div class="chat-bubble ${mine?'mine':'theirs'}">
-      <span class="chat-who">${escHtml(m.deNombre||'')}</span>
-      <span class="chat-txt">${escHtml(m.texto)}</span>
-      <span class="chat-time">${new Date(m.creadoEn).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}</span>
-    </div>`;
-  }).join('')||'<div class="empty" style="padding:20px"><span class="ee">💬</span><span>Inicia la conversación</span></div>';
-  const box=$('#chatBody'); if(box) box.scrollTop=box.scrollHeight;
+  const box=$('#chatBody');
+  const soft=opts.soft||isChatComposeActive();
+  const prevCount=window._chatRenderedCount||0;
+  if(soft&&prevCount>0&&msgs.length>=prevCount){
+    const existing=new Set([...box.querySelectorAll('[data-msg-id]')].map(el=>el.dataset.msgId));
+    msgs.slice(prevCount).forEach(m=>{
+      if(existing.has(m.id)) return;
+      box.insertAdjacentHTML('beforeend',renderChatBubble(m));
+    });
+    window._chatRenderedCount=msgs.length;
+    if(box) box.scrollTop=box.scrollHeight;
+  }else{
+    box.innerHTML=msgs.map(renderChatBubble).join('')||'<div class="empty" style="padding:20px"><span class="ee">💬</span><span>Inicia la conversación</span></div>';
+    window._chatRenderedCount=msgs.length;
+    if(box) box.scrollTop=box.scrollHeight;
+  }
+  restoreChatDraft();
+  const inp=$('#chatInput');
+  if(inp&&!inp._draftBound){
+    inp._draftBound=true;
+    inp.addEventListener('input',saveChatDraft);
+  }
   renderAdminTopActions();
   renderClientChatFab();
+}
+function refreshChatSoft(){
+  if(!window.activeChatId||!$('#v-chat')?.classList.contains('active')) return;
+  renderChatPage({soft:true});
 }
 function sendChatFromUI(){
   const t=$('#chatInput')?.value?.trim();
   if(!t||!window.activeChatId) return;
   sendChatMessage(window.activeChatId,t);
   $('#chatInput').value='';
+  try{sessionStorage.removeItem(chatDraftKey(window.activeChatId));}catch(e){}
   renderChatPage();
 }
+let chatMediaRec=null, chatAudioChunks=[];
+async function toggleChatAudio(){
+  if(window._chatRecording){
+    stopChatAudio();
+    return;
+  }
+  if(!navigator.mediaDevices?.getUserMedia){
+    toast('Tu navegador no permite grabar audio');
+    return;
+  }
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    chatAudioChunks=[];
+    chatMediaRec=new MediaRecorder(stream);
+    chatMediaRec.ondataavailable=e=>{if(e.data.size) chatAudioChunks.push(e.data);};
+    chatMediaRec.onstop=()=>{
+      stream.getTracks().forEach(tr=>tr.stop());
+      const blob=new Blob(chatAudioChunks,{type:chatMediaRec.mimeType||'audio/webm'});
+      const reader=new FileReader();
+      reader.onload=()=>{
+        if(window.activeChatId){
+          sendChatMessage(window.activeChatId,'',{tipo:'audio',audioUrl:reader.result});
+          renderChatPage();
+        }
+      };
+      reader.readAsDataURL(blob);
+      window._chatRecording=false;
+      const btn=$('#chatAudioBtn');
+      if(btn){btn.textContent='🎙️';btn.classList.remove('rec');}
+    };
+    chatMediaRec.start();
+    window._chatRecording=true;
+    const btn=$('#chatAudioBtn');
+    if(btn){btn.textContent='⏹️';btn.classList.add('rec');}
+    toast('Grabando… toca ⏹️ para enviar');
+  }catch(e){
+    toast('No se pudo acceder al micrófono');
+  }
+}
+function stopChatAudio(){
+  if(chatMediaRec&&chatMediaRec.state!=='inactive'){
+    try{chatMediaRec.stop();}catch(e){}
+  }
+}
+window.refreshChatSoft=refreshChatSoft;
+window.toggleChatAudio=toggleChatAudio;
+window.isChatComposeActive=isChatComposeActive;
 
 /* ---------- enviar a acomodar ---------- */
 async function sendToAcomodar(orderId){
@@ -368,8 +538,18 @@ function renderNotifFab(){
     if(fab) fab.style.display='none';
     renderWorkerTopActions();
     const n=unreadNotifCount();
-    $$('.worker-nav-inner .nav-btn').forEach((btn,i)=>{
-      if(i!==1) return;
+    const histN=typeof ordersForWorkersHistory==='function'?ordersForWorkersHistory().length:0;
+    $$('.worker-nav-inner .nav-btn').forEach(btn=>{
+      const nav=btn.dataset.workerNav;
+      if(nav==='history'){
+        let hb=btn.querySelector('.nav-badge');
+        if(histN){
+          if(!hb){hb=document.createElement('span');hb.className='nav-badge';btn.appendChild(hb);}
+          hb.textContent=histN;
+        }else if(hb) hb.remove();
+        return;
+      }
+      if(nav!=='avisos') return;
       let badge=btn.querySelector('.nav-badge');
       if(n){
         if(!badge){badge=document.createElement('span');badge.className='nav-badge';btn.appendChild(badge);}
@@ -416,6 +596,11 @@ function openNotifTray(){
 }
 
 function notifRowHTML(n){
+  if(n.tipo==='pedido_nuevo'){
+    const oid=n.referenciaId;
+    return `<div class="notif-row"><b>${escHtml(n.mensaje||'Nuevo pedido confirmado')}</b>
+      <div style="margin-top:8px"><button class="btn green sm" onclick="markNotifRead('${n.id}');closeSheet();workerTapOrder('${oid}')">Ver y acomodar</button></div></div>`;
+  }
   if(n.tipo==='acomodo_transferido'){
     const o=DB.orders.find(x=>x.id===n.referenciaId);
     return `<div class="notif-row"><b>📦 ${escHtml(n.mensaje||'Pedido transferido para acomodar')}</b>
@@ -443,6 +628,17 @@ function notifRowHTML(n){
     return `<div class="notif-row" onclick="markNotifRead('${n.id}')"><b>📢 Aviso de Olga</b><p style="margin-top:6px;font-weight:700">${escHtml(n.mensaje||'Mensaje del administrador')}</p></div>`;
   }
   if(n.tipo==='solicitud'){
+    const o=DB.orders.find(x=>x.id===n.referenciaId);
+    if(o?.entregaSolicitud?.estado==='pendiente'){
+      return `<div class="notif-row">
+        <b>🙏 ${escHtml(clientName(o.clientId))} solicita entrega HOY</b>
+        <p style="margin-top:6px;font-weight:700">${fmtDate(orderDeliveryDate(o))} · ${fmtTime12(o.deliveryTime)||'sin hora'} · ${escHtml(orderPreview(o,4))}</p>
+        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+          <button class="btn green sm" onclick="markNotifRead('${n.id}');resolveEntregaSolicitud('${o.id}','admitida');closeSheet()">Admitir</button>
+          <button class="btn ghost sm" onclick="markNotifRead('${n.id}');resolveEntregaSolicitud('${o.id}','denegada');closeSheet()">Denegar</button>
+          <button class="btn yellow sm" onclick="markNotifRead('${n.id}');closeSheet();openOrderDetail('${o.id}')">Ver pedido</button>
+        </div></div>`;
+    }
     return `<div class="notif-row" style="cursor:pointer" onclick="markNotifRead('${n.id}');openAdminChatTray()">
       <b>💬 Mensaje de cliente</b><p style="margin-top:4px;font-weight:700">Abre el chat para ver la solicitud</p></div>`;
   }

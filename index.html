@@ -623,7 +623,7 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
   <!-- ===================== OPERARIO ===================== -->
   <section class="view" id="v-worker">
     <div class="topbar">
-      <div><h1>Acomodar pedidos</h1><div class="sub" id="workerSub"></div></div>
+      <div><h1 id="workerTitle">Acomodar pedidos</h1><div class="sub" id="workerSub"></div></div>
       <div class="spacer"></div>
       <div id="workerTopActions" class="role-top-actions"></div>
       <button class="icon-btn" onclick="logout()">🚪</button>
@@ -631,8 +631,9 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
     <div class="content"><div id="workerBody" class="scrolly" style="flex:1"></div></div>
     <nav class="nav worker-nav-scroll compact-nav">
       <div class="worker-nav-inner">
-        <button class="nav-btn on" onclick="showView('v-worker');loadDB().then(()=>renderWorker())"><span class="ni">📦</span>Pedidos</button>
-        <button class="nav-btn" onclick="openNotifTray()"><span class="ni">👩‍🌾</span>Avisos</button>
+        <button class="nav-btn on" data-worker-nav="list" onclick="workerNav('list');loadDB().then(()=>renderWorker())"><span class="ni">📦</span>Pedidos</button>
+        <button class="nav-btn" data-worker-nav="history" onclick="workerNav('history');loadDB().then(()=>renderWorkerHistory())"><span class="ni">📋</span>Historial</button>
+        <button class="nav-btn" data-worker-nav="avisos" onclick="workerNav('avisos')"><span class="ni">👩‍🌾</span>Avisos</button>
       </div>
     </nav>
   </section>
@@ -765,14 +766,14 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
 </div>
 <div id="printArea" style="display:none"></div>
 
-<!-- build: 20260911j login-via-api-db -->
-<script>window.APP_BUILD='20260911j';</script>
-<script src="time.js?v=20260911j"></script>
-<script src="catalog.js?v=20260911j"></script>
-<script src="catalog-ext.js?v=20260911j"></script>
-<script src="order-specials.js?v=20260911j"></script>
-<script src="units.js?v=20260911j"></script>
-<script src="config.local.js?v=20260911j" onerror="window.FRUVER_CONFIG=window.FRUVER_CONFIG||{}"></script>
+<!-- build: 20260911l login-ios-xhr -->
+<script>window.APP_BUILD='20260911l';</script>
+<script src="time.js?v=20260911l"></script>
+<script src="catalog.js?v=20260911l"></script>
+<script src="catalog-ext.js?v=20260911l"></script>
+<script src="order-specials.js?v=20260911l"></script>
+<script src="units.js?v=20260911l"></script>
+<script src="config.local.js?v=20260911l" onerror="window.FRUVER_CONFIG=window.FRUVER_CONFIG||{}"></script>
 <script>
 /* ============================================================
    FRUVER PEDIDOS — SPA demo (fase de prototipo de interfaz)
@@ -896,13 +897,49 @@ function loadDBShowRetryToast(){
   toast('Sin conexión, reintentando…');
 }
 
+const IS_IOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+
 function apiUrl(path){
   const sep=path.includes('?')?'&':'?';
   return path+sep+'_='+Date.now();
 }
 
-async function fetchNoCache(url,opts={}){
-  return fetch(apiUrl(url),{cache:'no-store',credentials:'same-origin',...opts});
+function xhrRequest(method,url,body){
+  return new Promise((resolve,reject)=>{
+    const x=new XMLHttpRequest();
+    x.open(method,url,true);
+    if(body!=null) x.setRequestHeader('Content-Type','application/json');
+    x.onload=()=>{
+      let parsed=null;
+      try{parsed=JSON.parse(x.responseText||'null');}catch(e){parsed=null;}
+      resolve({status:x.status,body:parsed,ok:x.status>=200&&x.status<300});
+    };
+    x.onerror=()=>reject(new Error('network'));
+    x.send(body!=null?JSON.stringify(body):null);
+  });
+}
+
+async function httpGetJson(url){
+  const u=apiUrl(url);
+  if(IS_IOS){
+    const r=await xhrRequest('GET',u,null);
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.body;
+  }
+  const res=await fetch(u,{cache:'no-store',credentials:'same-origin'});
+  if(!res.ok) throw new Error('HTTP '+res.status);
+  return res.json();
+}
+
+async function httpPostJson(url,payload){
+  const u=apiUrl(url);
+  if(IS_IOS){
+    return xhrRequest('POST',u,payload);
+  }
+  const res=await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),cache:'no-store',credentials:'same-origin'});
+  let body=null;
+  try{body=await res.json();}catch(e){body=null;}
+  return {status:res.status,body,ok:res.ok};
 }
 
 async function loadDB(force=false,opts={}){
@@ -914,9 +951,8 @@ async function loadDB(force=false,opts={}){
   let showedRetryToast=false;
   for(let attempt=0;attempt<=backoffs.length;attempt++){
     try{
-      const res=await fetchNoCache(API_DB);
-      if(!res.ok) throw new Error('HTTP '+res.status);
-      const {data,updatedAt}=await res.json();
+      const json=await httpGetJson(API_DB);
+      const {data,updatedAt}=json||{};
       if(data){
         const serverTs=updatedAt?String(updatedAt):null;
         if(!force&&dbUpdatedAt&&serverTs===dbUpdatedAt) return true;
@@ -1078,7 +1114,10 @@ function refreshCurrentView(){
   else if(session.role==='worker'){
     const onAcomodo=$('#v-worker-acomodo')?.classList.contains('active');
     const onList=$('#v-worker')?.classList.contains('active');
-    if(onList&&typeof renderWorker==='function') renderWorker();
+    if(onList){
+      if(workerTab==='history'&&typeof renderWorkerHistory==='function') renderWorkerHistory();
+      else if(typeof renderWorker==='function') renderWorker();
+    }
     else if(onAcomodo){
       if(typeof renderWorkerAcomodoPage==='function') renderWorkerAcomodoPage();
       if(typeof updateWorkerNewOrdersBadge==='function') updateWorkerNewOrdersBadge();
@@ -1349,16 +1388,12 @@ function applyLoginSession(auth){
   toast('Respuesta de acceso inválida');
 }
 async function fetchAuthLogin(user,pass){
-  const body=JSON.stringify({username:user,password:pass});
-  const opts={method:'POST',headers:{'Content-Type':'application/json'},body};
-  const urls=['/api/db?action=login','/api/auth'];
-  for(const path of urls){
+  const payload={username:user,password:pass};
+  for(const path of ['/api/db?action=login','/api/auth']){
     try{
-      const res=await fetchNoCache(path,opts);
-      if(res.status===401) return {fail:'bad'};
-      if(!res.ok) continue;
-      const auth=await res.json();
-      if(auth?.role) return {auth};
+      const r=await httpPostJson(path,payload);
+      if(r.status===401) return {fail:'bad'};
+      if(r.ok&&r.body?.role) return {auth:r.body};
     }catch(e){console.warn('fetchAuthLogin',path,e);}
   }
   return null;
@@ -2262,12 +2297,12 @@ window.addEventListener('resize',()=>{if(session&&session.role==='client'&&$('#v
 
 /* ---------- arranque (init al final, tras features.js) ---------- */
 </script>
-<script src="features.js?v=20260911j"></script>
-<script src="compras.js?v=20260911j"></script>
-<script src="proveedores.js?v=20260911j"></script>
-<script src="interpret.js?v=20260911j"></script>
-<script src="workflow.js?v=20260911j"></script>
-<script src="messaging.js?v=20260911j"></script>
+<script src="features.js?v=20260911l"></script>
+<script src="compras.js?v=20260911l"></script>
+<script src="proveedores.js?v=20260911l"></script>
+<script src="interpret.js?v=20260911l"></script>
+<script src="workflow.js?v=20260911l"></script>
+<script src="messaging.js?v=20260911l"></script>
 <script>
 (async function init(){
   const st=$('#buildStamp'); if(st) st.textContent='Versión '+ (window.APP_BUILD||'?');
