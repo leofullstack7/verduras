@@ -766,7 +766,7 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
 </div>
 <div id="printArea" style="display:none"></div>
 
-<!-- build: 20260911m worker-historial -->
+<!-- build: 20260911m cache-ios-check -->
 <script>window.APP_BUILD='20260911m';</script>
 <script src="time.js?v=20260911m"></script>
 <script src="catalog.js?v=20260911m"></script>
@@ -2304,16 +2304,24 @@ window.addEventListener('resize',()=>{if(session&&session.role==='client'&&$('#v
 <script src="workflow.js?v=20260911m"></script>
 <script src="messaging.js?v=20260911m"></script>
 <script>
+async function fetchHtml(url){
+  if(IS_IOS){
+    return new Promise((resolve,reject)=>{
+      const x=new XMLHttpRequest();
+      x.open('GET',apiUrl(url),true);
+      x.onload=()=>resolve(x.status>=200&&x.status<300?x.responseText:'');
+      x.onerror=()=>reject(new Error('network'));
+      x.send();
+    });
+  }
+  const res=await fetch(apiUrl(url),{cache:'no-store',credentials:'same-origin'});
+  return res.ok?res.text():'';
+}
+
 async function checkForNewBuild(){
   try{
-    let html='';
-    if(IS_IOS){
-      const r=await xhrRequest('GET',apiUrl('/index.html'),null);
-      if(!r.ok) return;
-      html=typeof r.body==='string'?r.body:(await fetch(apiUrl('/index.html'),{cache:'no-store'}).then(x=>x.text()));
-    }else{
-      html=await fetch(apiUrl('/index.html'),{cache:'no-store',credentials:'same-origin'}).then(r=>r.ok?r.text():'');
-    }
+    const html=await fetchHtml('/index.html');
+    if(!html) return;
     const live=html.match(/APP_BUILD='([^']+)'/)?.[1];
     const st=$('#buildStamp');
     if(!st||!live||!window.APP_BUILD||live===window.APP_BUILD) return;
