@@ -22,6 +22,8 @@ const STATUS_COLORS={
 
 let adminClientFilter='all';
 let acomodoMinimized=null;
+/** IDs de pedidos visibles al entrar a acomodar (para badge de novedades). */
+let workerAcomodoListBaseline=null;
 let acomodoDraftTimer=null;
 
 function migrateWorkflow(){
@@ -47,14 +49,10 @@ if(typeof migrateDB==='function'){
 }
 
 function dispatchDateStr(){
-  const d=new Date();
-  if(typeof cutoffPassed==='function'&&cutoffPassed()) d.setDate(d.getDate()+1);
-  return d.toISOString().slice(0,10);
+  return todayStr();
 }
 function dispatchDayLabel(){
-  const d=new Date();
-  if(typeof cutoffPassed==='function'&&cutoffPassed()) d.setDate(d.getDate()+1);
-  return DIAS[d.getDay()];
+  return new Intl.DateTimeFormat('es-CO',{timeZone:typeof APP_TZ!=='undefined'?APP_TZ:'America/Bogota',weekday:'long'}).format(new Date());
 }
 function workerName(id){const w=(DB.workers||[]).find(x=>x.id===id);return w?w.name:'';}
 function productName(pid){const p=DB.products.find(x=>x.id===pid);return p?p.name:'';}
@@ -67,7 +65,66 @@ function statusLabel(st){
   return {por_confirmar:'Por confirmar',pendiente:'Pendiente',acomodando:'Acomodándose…',acomodado:'Acomodado',remisionado:'Remisionado',pesado:'Acomodado',facturado:'Remisionado',consolidado:'Consolidado',cerrado:'Cerrado',anulado:'Anulado'}[st]||st;
 }
 function ordersVisibleToWorkers(o){
-  return o&&o.status!=='por_confirmar'&&o.status!=='anulado';
+  if(!o||o.status==='por_confirmar'||o.status==='anulado') return false;
+  if(o.entregaSolicitud?.estado==='pendiente'||o.entregaSolicitud?.estado==='denegada') return false;
+  return true;
+}
+
+/** Pedidos que debe ver el operario (confirmados, listos para agarrar o en curso). */
+function ordersForWorkers(){
+  const today=todayStr();
+  return DB.orders.filter(o=>{
+    if(!ordersVisibleToWorkers(o)) return false;
+    if(['cerrado','remisionado','anulado'].includes(o.status)) return false;
+    if(o.status==='pendiente'||o.status==='acomodando') return true;
+    if(o.status==='acomodado') return orderDeliveryDate(o)===today;
+    return orderDeliveryDate(o)===today;
+  }).sort((a,b)=>{
+    const da=orderDeliveryDate(a),db=orderDeliveryDate(b);
+    if(da!==db) return da.localeCompare(db);
+    return sortByDeliveryTime(a,b);
+  });
+}
+
+function notifyWorkersNewOrder(o){
+  if(!o?.id||!DB.notifications) return;
+  const msg=`📦 Nuevo pedido: ${clientName(o.clientId)} · entrega ${fmtDate(orderDeliveryDate(o))}${o.deliveryTime?' · '+fmtTime12(o.deliveryTime):''}`;
+  (DB.workers||[]).filter(w=>w.activo!==false).forEach(w=>{
+    DB.notifications.unshift({
+      id:uid(),usuarioId:w.id,tipo:'pedido_nuevo',referenciaId:o.id,
+      deUsuarioId:'admin',mensaje:msg,leida:false,creadoEn:new Date().toISOString(),
+    });
+  });
+  DB.notifications=DB.notifications.slice(0,300);
+}
+
+function itemNeedsAcomodo(it){
+  return it&&(it.w==null||it.w==='');
+}
+
+function orderBlocksAdminConfirm(o){
+  if(!o||o.status!=='por_confirmar') return true;
+  if(o.entregaSolicitud?.estado==='pendiente'){
+    toast('El cliente espera tu respuesta sobre entrega para hoy (Admitir/Denegar en Avisos)');
+    return true;
+  }
+  if(o.entregaSolicitud?.estado==='denegada') return true;
+  if(o.photoOnly&&!o.items?.length) return true;
+  if(window.transcribingOrderId===o.id&&window.pendingItems?.length){
+    toast('Termina la transcripción antes de confirmar');
+    return true;
+  }
+  if(typeof isFrutaJugoItem==='function'){
+    const sinFrutas=(o.items||[]).filter(isFrutaJugoItem).some(it=>{
+      const jf=it.jugoFrutas||[];
+      return !jf.length||!jf.some(f=>String(f.fruta||'').trim());
+    });
+    if(sinFrutas){
+      toast('Agrega al menos una fruta con peso en «Fruta para jugo»');
+      return true;
+    }
+  }
+  return false;
 }
 
 function sortByDeliveryTime(a,b){
@@ -85,6 +142,23 @@ function syncOrderDetailScrollPad(){
   });
 }
 window.syncOrderDetailScrollPad=syncOrderDetailScrollPad;
+
+function isOrderDetailEditing(){
+  if(!$('#v-order-detail')?.classList.contains('active')) return false;
+  const el=document.activeElement;
+  if(!el) return false;
+  return !!(el.closest('#orderDetailBody')||el.closest('#orderDetailFoot')||el.classList?.contains('nota-admin-in')||el.classList?.contains('order-price-in'));
+}
+window.isOrderDetailEditing=isOrderDetailEditing;
+
+function patchOrderItemMustBuyUI(itemIdx){
+  const row=document.getElementById('prow_'+itemIdx);
+  if(!row) return;
+  row.classList.add('must-buy-marked');
+  const btn=row.querySelector('.must-buy-btn:not(.done)');
+  if(btn) btn.outerHTML='<button type="button" class="btn must-buy-btn done sm block" disabled>✅ En lista de compra</button>';
+}
+window.patchOrderItemMustBuyUI=patchOrderItemMustBuyUI;
 
 function calcPriceTotal(it){
   normItem(it);
@@ -119,11 +193,13 @@ function orderCardHTML(o,opts={}){
   const isListo=isAdmin&&typeof orderIsPricingComplete==='function'&&orderIsPricingComplete(o);
   const cardCls=['order-card','pop'];
   if(needsPricing) cardCls.push('order-needs-pricing');
+  if(o.status==='pendiente') cardCls.push('order-card-new');
   const listoBadge=isListo?'<div class="order-listo-corner"><span>LISTO</span></div>':'';
+  const newBadge=o.status==='pendiente'&&!o.operarioId?'<span class="chip exc" style="margin-left:6px">Nuevo</span>':'';
   return `<div class="${cardCls.join(' ')}" style="background:${sc.bg};cursor:pointer" onclick="${onclick}">
     <div class="oc-head"><span class="oc-emoji">${c.emoji||'🏪'}</span>
-      <div class="oc-title"><b>${c.name||'—'}</b>
-        <span>${ch} ${fmtTime12(o.time)}${o.deliveryTime?' · 🕐 '+fmtTime12(o.deliveryTime):''}${o.description?' · 📝 '+o.description:''}</span>
+      <div class="oc-title"><b>${c.name||'—'}</b>${newBadge}
+        <span>${ch} ${fmtTime12(o.time)}${o.deliveryTime?' · 🕐 '+fmtTime12(o.deliveryTime):''}${opts.extraSub||''}${o.description?' · 📝 '+o.description:''}</span>
         ${pulse||`<span class="oc-preview">${orderPreview(o)}</span>`}
         ${op?`<span class="oc-op">${op}</span>`:''}
         ${needsPricing?'<span class="oc-preview" style="color:var(--green-dark);margin-top:4px">💰 Falta poner precios</span>':''}
@@ -135,14 +211,34 @@ function orderCardHTML(o,opts={}){
 function orderRowHTML(o){return orderCardHTML(o);}
 
 /* ---------- operario: pantalla inicio ---------- */
+function updateWorkerNewOrdersBadge(){
+  const el=$('#workerNewOrdersBadge');
+  if(!el) return;
+  const onAcomodo=$('#v-worker-acomodo')?.classList.contains('active');
+  if(!onAcomodo||!workerAcomodoListBaseline){
+    el.hidden=true;
+    return;
+  }
+  const n=ordersForWorkers().filter(o=>!workerAcomodoListBaseline.has(o.id)).length;
+  if(n>0){
+    el.hidden=false;
+    el.textContent=`🔔 ${n} pedido${n>1?'s':''} nuevo${n>1?'s':''}`;
+  }else el.hidden=true;
+}
+
 function renderWorker(){
-  const date=todayStr();
-  const list=DB.orders.filter(o=>o.date===date&&ordersVisibleToWorkers(o)&&o.status!=='cerrado'&&o.status!=='remisionado')
-    .sort(sortByDeliveryTime);
+  workerAcomodoListBaseline=null;
+  updateWorkerNewOrdersBadge();
+  const list=ordersForWorkers();
+  const today=todayStr();
   $('#workerBody').innerHTML=`
-    <p style="font-size:13px;color:var(--ink-soft);font-weight:700;margin-bottom:10px">Pedidos de hoy por hora de entrega — toca para acomodar o ver.</p>
-    ${list.map(o=>orderCardHTML(o,{onclick:`workerTapOrder('${o.id}')`,worker:true})).join('')||
-      '<div class="empty"><span class="ee">✅</span><b class="display">Sin pedidos hoy</b><span>Cuando lleguen pedidos aparecerán aquí</span></div>'}`;
+    <p style="font-size:13px;color:var(--ink-soft);font-weight:700;margin-bottom:10px">Pedidos confirmados — aparecen al instante cuando Olga confirma. Toca para agarrar.</p>
+    ${list.map(o=>{
+      const del=orderDeliveryDate(o);
+      const delLbl=del!==today?` · 📅 entrega ${fmtDate(del)}`:'';
+      return orderCardHTML(o,{onclick:`workerTapOrder('${o.id}')`,worker:true,extraSub:delLbl});
+    }).join('')||
+      '<div class="empty"><span class="ee">✅</span><b class="display">Sin pedidos pendientes</b><span>Cuando Olga confirme un pedido aparecerá aquí al instante</span></div>'}`;
   renderNotifFab();
   renderAcomodoBubble();
 }
@@ -180,6 +276,7 @@ function openWorkerAcomodoPage(id,readOnly){
   normOrder(o);
   window._workerAcomodoId=id;
   window._workerAcomodoReadOnly=!!readOnly||!(o.status==='acomodando'&&o.operarioId===session.id);
+  workerAcomodoListBaseline=new Set(ordersForWorkers().map(x=>x.id));
   renderWorkerAcomodoPage();
   showView('v-worker-acomodo');
 }
@@ -195,12 +292,19 @@ function renderWorkerAcomodoPage(){
     const p=DB.products.find(x=>x.id===it.p)||{};
     const wVal=it.w!=null?it.w:'';
     const wU=it.wUnit||it.u||'kilo';
-    return `<div class="rev-row worker-acom-row" data-ai="${i}">
+    const jugoInfo=typeof isFrutaJugoItem==='function'&&isFrutaJugoItem(it)&&it.jugoFrutas?.length
+      ?`<span style="display:block;font-size:12px;color:var(--green-dark);font-weight:700;margin-top:4px">🥤 ${it.jugoFrutas.map(f=>`${f.fruta||'?'} ${f.kg||0}kg`).join(' · ')}</span>`:'';
+    const pulpaHtml=typeof workerPulpaSaboresHTML==='function'?workerPulpaSaboresHTML(it,i,id,ro):'';
+    const pending=itemNeedsAcomodo(it);
+    return `<div class="rev-row worker-acom-row ${pending?'pending-acomodo':''}" data-ai="${i}">
       <span class="re">${typeof productThumbHTML==='function'?productThumbHTML(p,32):p.emoji||'🥬'}</span>
       <div class="rn"><b>${typeof itemProductName==='function'?itemProductName(it):(p.name||'Producto')}</b>
-        <span>Pedido: ${it.q} ${it.uCliente||fmtUnit(it.u)}</span>
+        <span class="order-qty">Pedido: ${it.q} ${it.uCliente||fmtUnit(it.u)}</span>
+        ${pending?`<span style="display:block;font-size:12px;color:var(--orange-dark);font-weight:800;margin-top:4px">⏳ Falta por acomodar</span>`:''}
+        ${jugoInfo}
         ${it.equivNote?`<span style="display:block;font-size:12px;color:var(--ink-soft)">📝 ${it.equivNote}</span>`:''}
         ${it.notaAdmin?`<span style="display:block;font-size:12px;color:var(--orange-dark)">👩‍🌾 ${it.notaAdmin}</span>`:''}
+        ${pulpaHtml}
       </div>
       <div class="worker-acom-inputs">
         <input class="qty-in acomodo-in" inputmode="decimal" id="aw_${i}" value="${wVal}" placeholder="Real" ${ro?'disabled':''} oninput="acomodoInput('${id}',${i})">
@@ -223,6 +327,7 @@ function renderWorkerAcomodoPage(){
   }
   acomodoMinimized=null;
   renderAcomodoBubble();
+  updateWorkerNewOrdersBadge();
   if(typeof renderWorkerTopActions==='function') renderWorkerTopActions();
 }
 
@@ -235,7 +340,6 @@ function saveAcomodoDraft(id){
   clearTimeout(acomodoDraftTimer);
   acomodoDraftTimer=setTimeout(()=>{
     const o=DB.orders.find(x=>x.id===id); if(!o)return;
-    try{localStorage.setItem('acomodo_'+id,JSON.stringify(o.items));}catch(e){}
     saveDB();
   },400);
 }
@@ -248,9 +352,10 @@ function openAcomodoPanel(id,readOnly){
     const p=DB.products.find(x=>x.id===it.p)||{};
     const wVal=it.w!=null?it.w:'';
     const wU=it.wUnit||'kilo';
+    const pulpaHtml=typeof workerPulpaSaboresHTML==='function'?workerPulpaSaboresHTML(it,i,id,ro):'';
     return `<div class="rev-row" data-ai="${i}">
       <span class="re">${p.emoji||'🥬'}</span>
-      <div class="rn"><b>${p.name}</b><span>Pedido: ${itemQtyLabel(it)}${it.variacion?` · ${it.variacion}`:''}${it.equivNote?` · 📝 ${it.equivNote}`:''}${it.notaAdmin?` · 👩‍🌾 ${it.notaAdmin}`:''}</span></div>
+      <div class="rn"><b>${p.name}</b><span>Pedido: ${itemQtyLabel(it)}${it.variacion?` · ${it.variacion}`:''}${it.equivNote?` · 📝 ${it.equivNote}`:''}${it.notaAdmin?` · 👩‍🌾 ${it.notaAdmin}`:''}</span>${pulpaHtml}</div>
       <input class="qty-in acomodo-in" style="width:70px" inputmode="decimal" id="aw_${i}" value="${wVal}" placeholder="Cant." ${ro?'disabled':''} oninput="acomodoInput('${id}',${i})">
       <select id="awu_${i}" class="acomodo-unit" ${ro?'disabled':''} onchange="acomodoInput('${id}',${i})">
         ${UNITS.map(u=>`<option value="${u.id}" ${wU===u.id?'selected':''}>${u.short}</option>`).join('')}
@@ -301,6 +406,25 @@ function renderAcomodoBubble(){
 
 function finishAcomodo(id){
   const o=DB.orders.find(x=>x.id===id); if(!o)return;
+  o.items.forEach((it,i)=>{
+    if(typeof isPulpaJugoItem==='function'&&isPulpaJugoItem(it)){
+      ensurePulpSabores(it);
+      it.pulpSabores.forEach((_,si)=>{
+        const el=document.getElementById('ps_'+i+'_'+si);
+        if(el) it.pulpSabores[si]=el.value;
+      });
+    }
+  });
+  if(typeof isPulpaJugoItem==='function'){
+    const sinSabor=(o.items||[]).filter(isPulpaJugoItem).some(it=>{
+      ensurePulpSabores(it);
+      return it.pulpSabores.some(s=>!String(s||'').trim());
+    });
+    if(sinSabor){
+      toast('Indica el sabor de cada pulpa para jugo antes de enviar');
+      return;
+    }
+  }
   o.items.forEach((it,i)=>{
     const w=parseFloat($('#aw_'+i)?.value);
     if(!isNaN(w)&&w>0){it.w=w;it.wUnit=$('#awu_'+i)?.value||'kilo';}
@@ -392,6 +516,14 @@ function resolveTransfer(invId,res,nid){
 function renderOrderDetailPage(id,readOnly){
   const o=DB.orders.find(x=>x.id===id); if(!o)return;
   normOrder(o);
+  if(session.role==='admin'&&typeof isFrutaJugoItem==='function'){
+    o.items.forEach(it=>{
+      if(isFrutaJugoItem(it)){
+        ensureJugoFrutas(it);
+        if(!it.jugoFrutas.length) it.jugoFrutas.push({fruta:'',kg:0});
+      }
+    });
+  }
   applyDailyPricesToOrder(o);
   const c=DB.clients.find(x=>x.id===o.clientId)||{};
   const isAdmin=session.role==='admin';
@@ -427,24 +559,37 @@ function renderOrderDetailPage(id,readOnly){
     const lineTot=itemLineTotalDisplay(it);
     const dp=getDailyPrice(it.p,o.date||todayStr());
     const priceVal=formatOrderPriceValue(it.unitPrice??dp?.unitPrice??'');
-    return `<div class="rev-row order-item-row ${it.w==null||it.w===''?'pending-acomodo':''}" id="prow_${i}">
+    const canEditNota=isAdmin&&!readOnly&&!o.remisionNo&&(isPorConfirmar||o.status==='pendiente'||o.status==='acomodando');
+    const jugoInfo=typeof isFrutaJugoItem==='function'&&isFrutaJugoItem(it)&&it.jugoFrutas?.length
+      ?`<span style="display:block;font-size:12px;color:var(--ink-soft);margin-top:4px">🥤 ${it.jugoFrutas.map(f=>`${f.fruta||'?'} ${f.kg||0}kg`).join(' · ')}</span>`:'';
+    const canMustBuy=isAdmin&&!readOnly&&o.status!=='anulado'&&!o.remisionNo;
+    const mustBuyBtn=canMustBuy?(it.mustBuy
+      ?`<button type="button" class="btn must-buy-btn done sm block" disabled>✅ En lista de compra</button>`
+      :`<button type="button" class="btn must-buy-btn sm block" onclick="markOrderItemMustBuy('${id}',${i})">🛒 No hay, debe comprarse</button>`):'';
+    return `<div class="rev-row order-item-row ${it.w==null||it.w===''?'pending-acomodo':''} ${it.mustBuy?'must-buy-marked':''}" id="prow_${i}">
       <span class="re">${typeof productThumbHTML==='function'?productThumbHTML(p,36):p.emoji||'🥬'}</span>
       <div class="rn"><b>${pname}</b>
-        <span>Pedido: ${itemQtyLabel(it)}${it.variacion?` · <b>${it.variacion}</b>`:''}${acom}${!isPorConfirmar&&it.equivNote?` · 📝 ${it.equivNote}`:''}${!isPorConfirmar&&it.notaAdmin?` · 👩‍🌾 ${it.notaAdmin}`:''}</span>
+        <span class="order-qty">Pedido: ${itemQtyLabel(it)}${it.variacion?` · <b>${it.variacion}</b>`:''}${acom}${!isPorConfirmar&&it.equivNote?` · 📝 ${it.equivNote}`:''}${!isPorConfirmar&&it.notaAdmin?` · 👩‍🌾 ${it.notaAdmin}`:''}</span>
+        ${jugoInfo}
         ${it.u==='valor'?`<div class="valor-hint">${it.qKg!=null?`✅ ${it.qKg} kg calculados`:'Ingresa precio/kg abajo → se calculan los kilos automáticamente'}</div>`:''}
-        ${isPorConfirmar&&isAdmin?`<input class="nota-admin-in" id="notaAdmin_${i}" placeholder="Nota para operarios (opcional)" value="${(it.notaAdmin||'').replace(/"/g,'&quot;')}">`:''}
+        ${canEditNota?`<input class="nota-admin-in" id="notaAdmin_${i}" placeholder="Nota para operarios (opcional)" value="${escHtml(it.notaAdmin||'')}" onchange="saveAdminOrderNote('${id}',${i},this.value)">`:''}
+        ${typeof adminOrderItemExtrasHTML==='function'?adminOrderItemExtrasHTML(it,i,id,isAdmin&&!readOnly):''}
         ${canPriceAdmin?`<div class="order-price-row">
           <input class="order-price-in" id="pu_${i}" inputmode="decimal" value="${priceVal}" placeholder="Precio hoy" oninput="onOrderPriceInput(${i},'${id}')" onblur="formatOrderPriceBlur(${i})">
           <select class="order-price-unit" id="punit_${i}" onchange="onOrderPriceInput(${i},'${id}')">
             ${UNITS.map(u=>`<option value="${u.id}" ${(it.priceUnit||dp?.priceUnit||it.wUnit||it.u||'kilo')===u.id?'selected':''}>/${u.short}</option>`).join('')}
           </select></div>`:''}
-        ${priced?(lineTot?.pending?`<div class="price-total-box pending">⏳ Falta por acomodar</div>`:`<div class="price-total-box">🪙 $${fmtMoney(lineTot.total)}</div>`):''}
-      </div></div>`;
+        ${priced?(lineTot?.pending||itemNeedsAcomodo(it)?`<div class="price-total-box pending">⏳ Falta por acomodar</div>`:`<div class="price-total-box">🪙 $${fmtMoney(lineTot.total)}</div>`):itemNeedsAcomodo(it)?`<div class="price-total-box pending">⏳ Falta por acomodar</div>`:''}
+        ${mustBuyBtn}
+      </div>
+      ${isAdmin&&!readOnly&&!o.remisionNo?`<button type="button" class="icon-btn" title="Quitar" onclick="adminRemoveOrderItem('${id}',${i})">🗑️</button>`:''}
+    </div>`;
   }).join('');
   $('#orderDetailBody').innerHTML=`
     ${photoHero}${photoInfo}${confirmBanner}${savedTranscribe}${transcribePanel}${priceHint}${incomplete}
+    ${isAdmin&&!readOnly&&!o.remisionNo?`<button type="button" class="btn ghost block" style="margin-bottom:12px" onclick="openAdminAddOrderItem('${id}')">➕ Agregar producto al pedido</button>`:''}
     <div class="order-detail-meta">
-      ${fmtDate(o.date)} · ${fmtTime12(o.time)} · ${shiftLabel(o.shift)} · Entrega: ${o.deliveryTime?fmtTime12(o.deliveryTime):'sin hora'}
+      ${fmtDate(o.date)} · ${fmtTime12(o.time)} · ${shiftLabel(o.shift)} · Entrega: ${fmtDate(orderDeliveryDate(o))}${o.deliveryTime?' · '+fmtTime12(o.deliveryTime):''}
       ${o.description?'<br>📝 '+o.description:''}
       ${rem?'<br>📄 Remisión Nº '+rem.numero:''}
       <br>Estado: <b>${statusLabel(o.status)}</b>${isPorConfirmar?' (operarios y Compras aún no lo ven)':''}${o.operarioId?' · '+workerName(o.operarioId):''}
@@ -468,7 +613,7 @@ function renderOrderDetailPage(id,readOnly){
     const b=document.createElement('button');
     b.className='btn '+cls+(large?' btn-lg':''); b.innerHTML=label; b.onclick=fn; foot.appendChild(b);
   };
-  const canConfirm=isAdmin&&isPorConfirmar&&!readOnly&&o.status!=='anulado'&&!needsTranscription;
+  const canConfirm=isAdmin&&isPorConfirmar&&!readOnly&&o.status!=='anulado'&&!orderBlocksAdminConfirm(o);
   if(canConfirm)
     addBtn('✅ Confirmar pedido','green',()=>confirmOrderAdmin(id),true);
   else if(isAdmin&&o.status==='pendiente'&&!readOnly)
@@ -487,6 +632,29 @@ function renderOrderDetailPage(id,readOnly){
     renderInterpretInline('orderTranscribePanel');
   }
   syncOrderDetailScrollPad();
+}
+
+function saveAdminOrderNote(orderId,itemIdx,val){
+  const o=DB.orders.find(x=>x.id===orderId);
+  if(!o?.items[itemIdx]) return;
+  o.items[itemIdx].notaAdmin=val.trim();
+  saveDB();
+}
+
+function adminRemoveOrderItem(orderId,itemIdx){
+  const o=DB.orders.find(x=>x.id===orderId);
+  if(!o) return;
+  openSheet('¿Quitar producto?','Este producto se eliminará del pedido.',[
+    {label:'Quitar',cls:'orange',fn:()=>{
+      o.items.splice(itemIdx,1);
+      audit('Quitó producto del pedido',clientName(o.clientId));
+      saveDB();
+      closeSheet();
+      renderOrderDetailPage(orderId);
+      toast('Producto quitado');
+    }},
+    {label:'Cancelar',cls:'ghost',fn:closeSheet},
+  ]);
 }
 
 function saveOrderPrices(orderId){
@@ -508,38 +676,48 @@ function saveOrderPrices(orderId){
 async function confirmOrderAdmin(orderId){
   const o=DB.orders.find(x=>x.id===orderId);
   if(!o||o.status!=='por_confirmar') return;
-  if(orderNeedsTranscription(o)){
-    toast('Transcribe y corrige el pedido por foto antes de confirmar');
-    return;
+  if(orderBlocksAdminConfirm(o)) return;
+  showAppLoader('Confirmando pedido…');
+  setButtonsLoading('#orderDetailFoot .btn',true);
+  try{
+    o.items.forEach((it,i)=>{
+      const noteEl=document.getElementById('notaAdmin_'+i);
+      if(noteEl) it.notaAdmin=noteEl.value.trim();
+      if(typeof normSpecialItem==='function') normSpecialItem(it);
+      it.w=null;
+      it.wUnit=it.u||'kilo';
+      const up=parseOrderPriceInput(document.getElementById('pu_'+i));
+      if(!isNaN(up)&&up>=0){
+        it.unitPrice=up;
+        const puEl=document.getElementById('punit_'+i);
+        it.priceUnit=puEl?.value||it.u||'kilo';
+        if(it.u==='valor') resolveValorToKg(it,up);
+        it.total=null;
+        setDailyPrice(it.p,up,it.priceUnit,o.date);
+      }else{
+        it.total=null;
+      }
+    });
+    o.status='pendiente';
+    o.operarioId=null;
+    o.acomodoIniciadoEn=null;
+    o.acomodoFinalizadoEn=null;
+    o.confirmadoEn=new Date().toISOString();
+    o.confirmadoPor=session?.name||'Admin';
+    notifyWorkersNewOrder(o);
+    await flushSave();
+    audit('Confirmó pedido',clientName(o.clientId)+' · entrega '+fmtDate(orderDeliveryDate(o)));
+    saveDB();
+    toast('Pedido confirmado — visible para operarios y Compras ✅');
+    renderOrderDetailPage(orderId);
+    if(typeof updateAdminNavBadges==='function') updateAdminNavBadges();
+    if(adminTab==='consol'&&typeof renderConsol==='function') renderConsol();
+  }catch(e){
+    toast('Error al confirmar. Intenta de nuevo.');
+  }finally{
+    hideAppLoader();
+    setButtonsLoading('#orderDetailFoot .btn',false);
   }
-  if(window.transcribingOrderId===orderId&&window.pendingItems?.length){
-    toast('Termina la transcripción antes de confirmar');
-    return;
-  }
-  if(o.transcribeDraft?.some(it=>!it.removed&&it.highlight!=='none'&&!it.resolved)){
-    toast('Corrige las palabras resaltadas en la transcripción');
-    return;
-  }
-  o.items.forEach((it,i)=>{
-    const note=$('#notaAdmin_'+i)?.value;
-    if(note!=null) it.notaAdmin=note.trim();
-    const up=parseOrderPriceInput($('#pu_'+i));
-    if(!isNaN(up)&&up>=0){
-      it.unitPrice=up;
-      it.priceUnit=$('#punit_'+i)?.value||it.u||'kilo';
-      if(it.u==='valor') resolveValorToKg(it,up);
-      it.total=calcPriceTotal(it);
-      setDailyPrice(it.p,up,it.priceUnit,o.date);
-    }
-  });
-  o.status='pendiente';
-  o.confirmadoEn=new Date().toISOString();
-  o.confirmadoPor=session?.name||'Admin';
-  audit('Confirmó pedido',clientName(o.clientId));
-  await flushSave();
-  toast('Pedido confirmado — visible para operarios y Compras ✅');
-  renderOrderDetailPage(orderId);
-  if(typeof updateAdminNavBadges==='function') updateAdminNavBadges();
 }
 
 function onOrderPriceInput(i,oid){
@@ -563,8 +741,10 @@ function openOrderDetail(id,readOnly){
     else if(active?.id==='v-chat') pushNavState({kind:'chat',conversacionId:window.activeChatId});
     else pushNavState({kind:'admin-tab',tab:adminTab,view:active?.id||'v-admin'});
     window._currentOrderDetailId=id;
+    window._orderDetailReadOnly=!!readOnly;
     renderOrderDetailPage(id,readOnly);
     showView('v-order-detail');
+    if(typeof loadDB==='function') loadDB(true).catch(()=>{});
     return;
   }
   renderOrderDetailSheet(id,readOnly);
@@ -606,7 +786,7 @@ function renderOrderDetailSheet(id,readOnly){
   if(isAdmin&&o.status!=='anulado'&&!readOnly) btns.push({label:'🗑️ Anular',cls:'orange',fn:()=>voidOrder(o.id)});
   openSheet(`${readOnly?'👁️ ':''}📦 Pedido — ${c.name}`,`
     <div style="font-size:13px;font-weight:700;color:var(--ink-soft);margin-bottom:10px">
-      ${fmtDate(o.date)} · ${fmtTime12(o.time)} · ${shiftLabel(o.shift)} · Entrega: ${o.deliveryTime?fmtTime12(o.deliveryTime):'sin hora'}
+      ${fmtDate(o.date)} · ${fmtTime12(o.time)} · ${shiftLabel(o.shift)} · Entrega: ${fmtDate(orderDeliveryDate(o))}${o.deliveryTime?' · '+fmtTime12(o.deliveryTime):''}
       ${o.description?'<br>📝 '+o.description:''}
       ${rem?'<br>📄 Remisión Nº '+rem.numero:''}
       <br>Estado: <b>${statusLabel(o.status)}</b>${o.operarioId?' · '+workerName(o.operarioId):''}
@@ -815,7 +995,7 @@ function renderOrders(){
 /* ---------- dashboard rediseñado ---------- */
 function renderDash(){
   const porConfirmar=DB.orders.filter(o=>o.date===todayStr()&&o.status==='por_confirmar').sort(sortByDeliveryTime);
-  const t=ordersOf(todayStr()).filter(o=>o.status!=='por_confirmar');
+  const t=DB.orders.filter(o=>orderDeliveryDate(o)===todayStr()&&o.status!=='anulado'&&o.status!=='por_confirmar');
   const acomodados=t.filter(o=>['acomodado','remisionado','cerrado','pesado','facturado'].includes(o.status)).length;
   const total=t.length||1;
   const pct=Math.round((acomodados/total)*100);
@@ -891,8 +1071,10 @@ function voidOrder(id){
 const _refreshCurrentView=typeof refreshCurrentView==='function'?refreshCurrentView:null;
 refreshCurrentView=function(){
   if(_refreshCurrentView) _refreshCurrentView();
-  renderNotifFab();
-  renderAcomodoBubble();
+  if(!$('#v-order-detail')?.classList.contains('active')){
+    renderNotifFab();
+    renderAcomodoBubble();
+  }
 };
 
 window._renderDashImpl=renderDash;
@@ -903,9 +1085,12 @@ window._orderRowHTML=orderRowHTML;
 window.closeWorkerAcomodo=closeWorkerAcomodo;
 window.openWorkerAcomodoPage=openWorkerAcomodoPage;
 window.renderWorkerAcomodoPage=renderWorkerAcomodoPage;
+window.updateWorkerNewOrdersBadge=updateWorkerNewOrdersBadge;
 window.saveOrderPrices=saveOrderPrices;
 window.formatOrderPriceBlur=formatOrderPriceBlur;
 window.ordersVisibleToWorkers=ordersVisibleToWorkers;
+window.ordersForWorkers=ordersForWorkers;
+window.itemNeedsAcomodo=itemNeedsAcomodo;
 window.sortByDeliveryTime=sortByDeliveryTime;
 
 window.addEventListener('resize',()=>{
@@ -926,3 +1111,5 @@ function updateAdminNavBadges(){
   });
 }
 window.updateAdminNavBadges=updateAdminNavBadges;
+window.saveAdminOrderNote=saveAdminOrderNote;
+window.adminRemoveOrderItem=adminRemoveOrderItem;

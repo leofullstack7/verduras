@@ -128,13 +128,15 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
 .consol-list{display:flex;flex-direction:column;gap:4px}
 .consol-list-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 8px;border:2px solid var(--line);border-radius:10px;background:#fff}
 .consol-list-row.on{border-color:var(--green);background:var(--green-soft)}
+.consol-list-row.consol-must-buy{border-color:var(--orange);background:rgba(255,122,31,.08)}
 .consol-chk-wrap{flex-shrink:0}
 .consol-chk-wrap input{width:20px;height:20px;accent-color:var(--green)}
 .consol-list-main{display:flex;align-items:center;gap:8px;flex:1;min-width:0;cursor:pointer}
 .consol-list-row .cn{flex:1;min-width:0}
 .consol-list-row .cn b{font-size:14px;display:block;font-family:'Fredoka'}
 .consol-list-row .cn span{font-size:11px;color:var(--ink-soft);font-weight:700}
-.consol-list-row .cq{font-family:'Fredoka';font-weight:700;font-size:15px;color:var(--green);flex-shrink:0}
+.consol-list-row .cn span.consol-clients{font-size:12px;line-height:1.35;display:block;margin-top:2px}
+.consol-list-row .cq{font-family:'Fredoka';font-weight:700;font-size:17px;color:var(--green);flex-shrink:0}
 .consol-nota-in.slim{flex:1 1 100%;font-size:11px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px}
 .consol-action-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
 .prod-stepper{flex:0 0 auto;display:flex;align-items:center;gap:3px}
@@ -152,6 +154,10 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
 .order-price-in:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px rgba(31,168,77,.15)}
 .order-price-unit{flex:0 0 auto;min-width:78px;height:48px;border:2px solid var(--line);border-radius:12px;padding:0 10px;font-weight:800;font-size:15px;background:#fff}
 .order-item-row{align-items:flex-start;padding:12px}
+.order-item-row.must-buy-marked{background:rgba(255,122,31,.06);border-radius:12px}
+.order-card-new{border:2px solid var(--green)!important;box-shadow:0 0 0 2px rgba(31,168,77,.15)}
+.must-buy-btn{background:rgba(255,122,31,.12);border:2px solid var(--orange);color:var(--orange-dark);margin-top:8px;font-size:12px;padding:8px 10px;font-weight:800}
+.must-buy-btn.done{background:rgba(31,168,77,.12);border-color:var(--green);color:var(--green-dark);opacity:1}
 .order-item-row .re{font-size:32px;flex-shrink:0}
 .order-item-row .rn{min-width:0;flex:1}
 .qty-in:focus{outline:none;border-color:var(--green)}
@@ -267,6 +273,9 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
 .rev-row .rn{flex:1;min-width:0}
 .rev-row .rn b{font-family:'Fredoka';font-weight:600;font-size:14.5px;display:block}
 .rev-row .rn span{font-size:12px;color:var(--ink-soft);font-weight:700}
+.rev-row .rn span.order-qty,.order-item-row .rn span.order-qty,.worker-acom-row .rn span.order-qty{font-size:16px;font-weight:800;color:var(--ink);line-height:1.35}
+.del-day-picker{display:flex;gap:10px;margin-top:12px}
+.del-day-picker .btn{flex:1;min-height:48px}
 .rev-row select{border:2px solid var(--line);border-radius:10px;padding:7px;max-width:150px;font-weight:700}
 .rev-row.warn{border-color:var(--orange);background:var(--orange-soft)}
 .warn-note{display:flex;gap:10px;align-items:center;background:var(--orange-soft);border:2px solid var(--orange);
@@ -288,6 +297,11 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
 .hints b{font-family:'Fredoka'}
 .spin{width:46px;height:46px;border:5px solid var(--line);border-top-color:var(--green);border-radius:50%;animation:sp .8s linear infinite;margin:14px auto}
 @keyframes sp{to{transform:rotate(360deg)}}
+.app-loader{position:fixed;inset:0;background:rgba(255,255,255,.78);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
+.app-loader[hidden]{display:none!important}
+.app-loader-box{text-align:center;padding:28px 32px;background:#fff;border-radius:20px;box-shadow:0 8px 32px rgba(0,0,0,.12);min-width:200px}
+.app-loader-box p{font-weight:800;margin-top:10px;color:var(--ink-soft);font-size:14px}
+.btn.loading,.btn:disabled{opacity:.65;pointer-events:none}
 
 /* ---------- éxito ---------- */
 .success-wrap{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center}
@@ -503,14 +517,20 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
 .chat-bubble .chat-who{display:block;font-size:11px;font-weight:800;color:var(--ink-soft);margin-bottom:4px}
 .chat-bubble .chat-txt{display:block;font-weight:700;font-size:14px;line-height:1.35}
 .chat-bubble .chat-time{display:block;font-size:11px;color:var(--ink-soft);margin-top:4px;text-align:right}
-.chat-compose{display:flex;gap:8px;padding:10px 14px calc(10px + env(safe-area-inset-bottom));border-top:2px solid var(--line);background:#fff}
+.chat-compose{display:flex;gap:8px;padding:10px 14px calc(10px + env(safe-area-inset-bottom));border-top:2px solid var(--line);background:#fff;align-items:center}
 .chat-compose input{flex:1;border:2px solid var(--line);border-radius:14px;padding:12px;font-weight:700}
+.chat-audio-btn{width:46px;height:46px;border-radius:50%;border:2px solid var(--line);background:#fff;font-size:20px;flex:none}
+.chat-audio-btn.rec{background:var(--red);border-color:var(--red);animation:pulse 1s infinite}
+.special-item-box .nota-admin-in{width:100%;margin-top:4px}
 .prod-thumb-wrap{display:inline-grid;place-items:center;border-radius:9px;overflow:hidden;flex-shrink:0}
 
 /* ---------- burbuja acomodo minimizado ---------- */
 .acomodo-bubble{position:fixed;bottom:calc(80px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);
   z-index:45;background:#fff;border:2px solid var(--green);border-radius:20px;padding:10px 14px;
   box-shadow:var(--shadow);display:flex;align-items:center;gap:10px;font-weight:700;font-size:14px;max-width:92vw}
+.worker-new-orders-badge{display:inline-flex;align-items:center;gap:4px;padding:5px 11px;border-radius:999px;background:var(--orange);color:#fff;
+  font-size:12px;font-weight:800;cursor:pointer;border:none;font-family:inherit;white-space:nowrap;animation:nbpulse 1.5s ease infinite;flex:none}
+.worker-new-orders-badge[hidden]{display:none!important}
 
 @media print{
   body *{visibility:hidden}
@@ -537,6 +557,7 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
         <div class="field"><label>Contraseña</label><input id="loginPass" type="password" autocomplete="current-password" placeholder="••••••" onkeydown="if(event.key==='Enter')doLogin()"></div>
         <button class="btn green block" onclick="doLogin()">Entrar</button>
       </div>
+      <p id="buildStamp" style="text-align:center;font-size:11px;color:#b0b8c0;margin-top:14px;font-weight:700"></p>
     </div>
   </section>
 
@@ -609,7 +630,7 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
     <div class="content"><div id="workerBody" class="scrolly" style="flex:1"></div></div>
     <nav class="nav worker-nav-scroll compact-nav">
       <div class="worker-nav-inner">
-        <button class="nav-btn on" onclick="showView('v-worker');renderWorker()"><span class="ni">📦</span>Pedidos</button>
+        <button class="nav-btn on" onclick="showView('v-worker');loadDB().then(()=>renderWorker())"><span class="ni">📦</span>Pedidos</button>
         <button class="nav-btn" onclick="openNotifTray()"><span class="ni">👩‍🌾</span>Avisos</button>
       </div>
     </nav>
@@ -620,6 +641,7 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
     <div class="topbar">
       <button type="button" class="icon-btn back-btn" onclick="closeWorkerAcomodo()" title="Volver">←</button>
       <div style="min-width:0;flex:1"><h1 id="workerAcomodoTitle" style="font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Pedido</h1><div class="sub" id="workerAcomodoSub"></div></div>
+      <button type="button" id="workerNewOrdersBadge" class="worker-new-orders-badge" hidden onclick="closeWorkerAcomodo()" title="Ver pedidos nuevos en la lista"></button>
       <div class="spacer"></div>
       <div class="role-top-actions worker-top-actions"></div>
     </div>
@@ -708,6 +730,7 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
       <div id="chatBody" class="scrolly" style="flex:1;padding:12px 14px"></div>
     </div>
     <div class="chat-compose">
+      <button type="button" class="chat-audio-btn" id="chatAudioBtn" title="Enviar audio" onclick="toggleChatAudio()">🎙️</button>
       <input id="chatInput" placeholder="Escribe un mensaje…" onkeydown="if(event.key==='Enter')sendChatFromUI()">
       <button class="btn green" onclick="sendChatFromUI()">Enviar</button>
     </div>
@@ -733,20 +756,28 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
 </div>
 
 <div class="toast" id="toast"></div>
+<div id="appLoader" class="app-loader" hidden aria-live="polite" aria-busy="true">
+  <div class="app-loader-box">
+    <div class="spin"></div>
+    <p id="appLoaderMsg">Procesando…</p>
+  </div>
+</div>
 <div id="printArea" style="display:none"></div>
 
-<script src="catalog.js"></script>
-<script src="catalog-ext.js"></script>
-<script src="units.js"></script>
-<script src="config.local.js" onerror="window.FRUVER_CONFIG=window.FRUVER_CONFIG||{}"></script>
+<!-- build: 20260911a worker-sync-fixes -->
+<script>window.APP_BUILD='20260911a';</script>
+<script src="time.js?v=20260911a"></script>
+<script src="catalog.js?v=20260911a"></script>
+<script src="catalog-ext.js?v=20260911a"></script>
+<script src="order-specials.js?v=20260911a"></script>
+<script src="units.js?v=20260911a"></script>
+<script src="config.local.js?v=20260911a" onerror="window.FRUVER_CONFIG=window.FRUVER_CONFIG||{}"></script>
 <script>
 /* ============================================================
    FRUVER PEDIDOS — SPA demo (fase de prototipo de interfaz)
    ============================================================ */
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-const todayStr=()=>new Date().toISOString().slice(0,10);
-const fmtDate=d=>new Date(d+"T12:00").toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long'});
-const nowTime=()=>new Date().toTimeString().slice(0,5);
+const fmtDate=d=>new Date(d+"T12:00:00").toLocaleDateString('es-CO',{timeZone:APP_TZ,weekday:'long',day:'numeric',month:'long'});
 function fmtTime12(t){
   if(!t) return '';
   const m=String(t).match(/^(\d{1,2}):(\d{2})/);
@@ -827,36 +858,163 @@ function seedOrders(){
 }
 
 /* ---------- base de datos (API Neon Postgres en producción) ---------- */
-let DB=null, dbUpdatedAt=null, syncTimer=null, saveT=null, saving=false;
+let DB=null, dbUpdatedAt=null, syncTimer=null, syncInFlight=false, syncActive=false, saveT=null, saving=false, saveQueued=false;
+let loaderDepth=0;
 const API_DB='/api/db';
+
+function showAppLoader(msg='Procesando…'){
+  loaderDepth++;
+  const el=$('#appLoader');
+  const lbl=$('#appLoaderMsg');
+  if(el){el.hidden=false;el.setAttribute('aria-busy','true');}
+  if(lbl) lbl.textContent=msg;
+}
+function hideAppLoader(){
+  loaderDepth=Math.max(0,loaderDepth-1);
+  if(loaderDepth===0){
+    const el=$('#appLoader');
+    if(el){el.hidden=true;el.setAttribute('aria-busy','false');}
+  }
+}
+function setButtonsLoading(sel,on){
+  $$(sel).forEach(b=>{b.disabled=!!on; if(on) b.classList.add('loading'); else b.classList.remove('loading');});
+}
 
 function defaultDB(){
   return {products:SEED_PRODUCTS,clients:SEED_CLIENTS,workers:SEED_WORKERS,orders:seedOrders(),purchases:[],audit:[],config:{cutoff:'16:00',remisionNext:12588},admin:{...SEED_ADMIN},invitations:[],notifications:[],remisiones:[],vocabulario:[],suscripciones:[]};
 }
 
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+
 async function loadDB(force=false){
+  const backoffs=[400,1000,2000];
+  let lastErr=null;
+  for(let attempt=0;attempt<=backoffs.length;attempt++){
+    try{
+      const res=await fetch(API_DB,{cache:'no-store'});
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      const {data,updatedAt}=await res.json();
+      if(data){
+        const serverTs=updatedAt?String(updatedAt):null;
+        if(!force&&dbUpdatedAt&&serverTs===dbUpdatedAt) return false;
+        if(saving){
+          mergeIncomingOrders(data.orders);
+          if(data.notifications) mergeIncomingNotifications(data.notifications);
+          if(data.mensajes) mergeIncomingMensajes(data.mensajes);
+          if(serverTs) dbUpdatedAt=serverTs;
+          migrateDB();
+          return true;
+        }
+        DB=data; dbUpdatedAt=serverTs; migrateDB(); return true;
+      }
+      DB=defaultDB(); migrateDB(); await flushSave(); return true;
+    }catch(e){
+      lastErr=e;
+      if(attempt<backoffs.length){
+        toast('Sin conexión, reintentando…');
+        await sleep(backoffs[attempt]);
+        continue;
+      }
+    }
+  }
+  console.error('loadDB',lastErr);
+  if(!DB){DB=defaultDB();migrateDB();}
+  return false;
+}
+
+function mergeWorkerEditingOrder(lo,so){
+  const localItems=lo.items||[];
+  const serverItems=so.items||[];
+  if(serverItems.length!==localItems.length){
+    lo.items=serverItems.map((si,i)=>{
+      const li=localItems[i];
+      const copy=JSON.parse(JSON.stringify(si));
+      if(li&&li.p===si.p){
+        if(li.w!=null) copy.w=li.w;
+        if(li.wUnit) copy.wUnit=li.wUnit;
+        if(li.jugoFrutas?.length) copy.jugoFrutas=li.jugoFrutas;
+        if(li.pulpSabores?.length) copy.pulpSabores=li.pulpSabores;
+      }
+      return copy;
+    });
+  }else{
+    serverItems.forEach((si,idx)=>{
+      const li=localItems[idx];
+      if(!li||!si) return;
+      if(si.notaAdmin) li.notaAdmin=si.notaAdmin;
+      if(si.mustBuy) li.mustBuy=true;
+      if(si.mustBuyAt&&!li.mustBuyAt) li.mustBuyAt=si.mustBuyAt;
+      if(si.mustBuyBy&&!li.mustBuyBy) li.mustBuyBy=si.mustBuyBy;
+      if(si.unitPrice!=null&&li.unitPrice==null) li.unitPrice=si.unitPrice;
+      if(si.q!=null&&li.w==null) li.q=si.q;
+    });
+  }
+  lo.status=so.status;
+  if(so.confirmadoEn) lo.confirmadoEn=so.confirmadoEn;
+  if(so.confirmadoPor) lo.confirmadoPor=so.confirmadoPor;
+  if(so.operarioId!=null) lo.operarioId=so.operarioId;
+  if(so.acomodoIniciadoEn) lo.acomodoIniciadoEn=so.acomodoIniciadoEn;
+  if(so.acomodoFinalizadoEn) lo.acomodoFinalizadoEn=so.acomodoFinalizadoEn;
+  if(so.photoOnly===false) lo.photoOnly=false;
+  if(so.imagenOriginal&&!lo.imagenOriginal) lo.imagenOriginal=so.imagenOriginal;
+  if(so.deliveryTime) lo.deliveryTime=so.deliveryTime;
+  if(so.description) lo.description=so.description;
+}
+
+function mergeIncomingOrders(serverOrders){
+  if(!DB) return;
+  if(!DB.orders) DB.orders=[];
+  const preserveId=(saving&&session?.role==='worker'&&window._workerAcomodoId&&!window._workerAcomodoReadOnly)
+    ?window._workerAcomodoId:null;
+  (serverOrders||[]).forEach(so=>{
+    if(!so?.id) return;
+    const idx=DB.orders.findIndex(o=>o.id===so.id);
+    if(idx<0){
+      DB.orders.unshift(JSON.parse(JSON.stringify(so)));
+      return;
+    }
+    if(preserveId&&so.id===preserveId){
+      mergeWorkerEditingOrder(DB.orders[idx],so);
+      return;
+    }
+    DB.orders[idx]=JSON.parse(JSON.stringify(so));
+  });
+}
+
+function mergeIncomingNotifications(serverNotifs){
+  if(!DB.notifications) DB.notifications=[];
+  (serverNotifs||[]).forEach(n=>{
+    if(!DB.notifications.some(x=>x.id===n.id)) DB.notifications.unshift(n);
+  });
+}
+
+function mergeIncomingMensajes(serverMsgs){
+  if(!DB.mensajes) DB.mensajes=[];
+  (serverMsgs||[]).forEach(m=>{
+    if(!DB.mensajes.some(x=>x.id===m.id)) DB.mensajes.push(m);
+  });
+}
+
+async function mergeServerOrdersBeforeSave(){
   try{
     const res=await fetch(API_DB,{cache:'no-store'});
-    if(!res.ok) throw new Error('HTTP '+res.status);
+    if(!res.ok) return;
     const {data,updatedAt}=await res.json();
-    if(data){
-      const serverTs=updatedAt?String(updatedAt):null;
-      if(!force&&dbUpdatedAt&&serverTs===dbUpdatedAt) return false;
-      DB=data; dbUpdatedAt=serverTs; migrateDB(); return true;
-    }
-    DB=defaultDB(); migrateDB(); await flushSave(); return true;
+    if(!data?.orders?.length) return;
+    mergeIncomingOrders(data.orders);
+    if(updatedAt) dbUpdatedAt=String(updatedAt);
   }catch(e){
-    console.error('loadDB',e);
-    if(!DB){DB=defaultDB();migrateDB();}
-    return false;
+    console.warn('mergeServerOrdersBeforeSave',e);
   }
 }
 
 async function flushSave(){
   clearTimeout(saveT);
-  if(!DB||saving) return;
+  if(!DB) return;
+  if(saving){ saveQueued=true; return; }
   saving=true;
   try{
+    await mergeServerOrdersBeforeSave();
     const res=await fetch(API_DB,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(DB)});
     if(!res.ok) throw new Error('HTTP '+res.status);
     const j=await res.json();
@@ -864,12 +1022,16 @@ async function flushSave(){
   }catch(e){
     console.error('saveDB',e);
     toast('Error al guardar en el servidor');
-  }finally{saving=false;}
+    throw e;
+  }finally{
+    saving=false;
+    if(saveQueued){ saveQueued=false; await flushSave(); }
+  }
 }
 
 function saveDB(){
   clearTimeout(saveT);
-  saveT=setTimeout(flushSave,350);
+  saveT=setTimeout(flushSave,180);
 }
 
 function refreshCurrentView(){
@@ -877,27 +1039,73 @@ function refreshCurrentView(){
   if(session.role==='admin'){
     const active=$('.view.active')?.id;
     if(active==='v-admin') adminNav(adminTab);
+    else if(active==='v-order-detail'&&window._currentOrderDetailId){
+      /* Sin re-render automático: evita parpadeo al escribir precios/notas (PC) */
+      if(typeof renderAdminTopActions==='function') renderAdminTopActions();
+    }
+    else if(active==='v-chat'&&typeof refreshChatSoft==='function') refreshChatSoft();
     else if(typeof renderAdminTopActions==='function') renderAdminTopActions();
   }
   else if(session.role==='worker'){
-    if($('#v-worker-acomodo')?.classList.contains('active')&&typeof renderWorkerAcomodoPage==='function') renderWorkerAcomodoPage();
-    else renderWorker();
+    const onAcomodo=$('#v-worker-acomodo')?.classList.contains('active');
+    const onList=$('#v-worker')?.classList.contains('active');
+    if(onList&&typeof renderWorker==='function') renderWorker();
+    else if(onAcomodo){
+      if(typeof renderWorkerAcomodoPage==='function') renderWorkerAcomodoPage();
+      if(typeof updateWorkerNewOrdersBadge==='function') updateWorkerNewOrdersBadge();
+    }
+    if(typeof renderWorkerTopActions==='function') renderWorkerTopActions();
   }
   else if(session.role==='client'){
     if($('#v-order')?.classList.contains('active')) renderClientOrder();
     if($('#v-history')?.classList.contains('active')) renderHistory();
-    if($('#v-chat')?.classList.contains('active')&&typeof renderChatPage==='function') renderChatPage();
+    if($('#v-chat')?.classList.contains('active')&&typeof refreshChatSoft==='function') refreshChatSoft();
   }
+}
+
+function bindSyncResumeListeners(){
+  if(window._syncResumeBound) return;
+  window._syncResumeBound=true;
+  document.addEventListener('visibilitychange',()=>{
+    if(document.hidden||!session) return;
+    forceSyncRefresh();
+  });
+  window.addEventListener('online',()=>{
+    if(session) forceSyncRefresh();
+  });
+}
+
+async function forceSyncRefresh(){
+  await loadDB(true);
+  refreshCurrentView();
 }
 
 function startSync(){
   stopSync();
-  syncTimer=setInterval(async()=>{
-    const changed=await loadDB();
-    if(changed) refreshCurrentView();
-  },4000);
+  bindSyncResumeListeners();
+  syncActive=true;
+  const ms=session?.role==='worker'?500:2000;
+  const tick=async()=>{
+    if(!syncActive) return;
+    if(syncInFlight){
+      syncTimer=setTimeout(tick,ms);
+      return;
+    }
+    syncInFlight=true;
+    try{
+      const changed=await loadDB();
+      if(changed) refreshCurrentView();
+    }finally{
+      syncInFlight=false;
+      if(syncActive) syncTimer=setTimeout(tick,ms);
+    }
+  };
+  tick();
 }
-function stopSync(){if(syncTimer){clearInterval(syncTimer);syncTimer=null;}}
+function stopSync(){
+  syncActive=false;
+  if(syncTimer){clearTimeout(syncTimer);syncTimer=null;}
+}
 function migrateDB(){
   if(!DB.admin) DB.admin={...SEED_ADMIN};
   if(!DB.workers) DB.workers=SEED_WORKERS.map(w=>({...w}));
@@ -932,6 +1140,7 @@ function migrateDB(){
   DB.orders.forEach(o=>{
     o.description=o.description||'';
     o.deliveryTime=o.deliveryTime||'';
+    if(!o.deliveryDate) o.deliveryDate=o.date;
     o.shift=o.shift||orderShift(o.time);
     if(statusMap[o.status]) o.status=statusMap[o.status];
     if(o.weighedBy&&!o.operarioId){
@@ -939,7 +1148,19 @@ function migrateDB(){
       if(w) o.operarioId=w.id;
     }
     if(o.weighedAt&&!o.acomodoFinalizadoEn) o.acomodoFinalizadoEn=o.weighedAt;
-    o.items=(o.items||[]).map(it=>({p:it.p,q:it.q,u:it.u||'kilo',uCliente:it.uCliente||null,nombreLibre:it.nombreLibre||'',equivNote:it.equivNote||'',notaAdmin:it.notaAdmin||it.nota_admin||'',variacion:it.variacion||'',valorPedido:it.valorPedido??null,qKg:it.qKg??null,w:it.w??null,wUnit:it.wUnit||null,unitPrice:it.unitPrice??null,priceUnit:it.priceUnit||it.u||'kilo',total:it.total??null}));
+    o.items=(o.items||[]).map(it=>{
+      const row={
+        p:it.p,q:it.q,u:it.u||'kilo',uCliente:it.uCliente||null,nombreLibre:it.nombreLibre||'',
+        equivNote:it.equivNote||'',notaAdmin:it.notaAdmin||it.nota_admin||'',variacion:it.variacion||'',
+        valorPedido:it.valorPedido??null,qKg:it.qKg??null,w:it.w??null,wUnit:it.wUnit||null,
+        unitPrice:it.unitPrice??null,priceUnit:it.priceUnit||it.u||'kilo',total:it.total??null,
+        mustBuy:!!it.mustBuy,mustBuyAt:it.mustBuyAt||'',mustBuyBy:it.mustBuyBy||'',
+        jugoFrutas:it.jugoFrutas||[],pulpSabores:it.pulpSabores||[],textoCliente:it.textoCliente||'',
+      };
+      if(typeof normSpecialItem==='function') normSpecialItem(row);
+      else if(typeof normItem==='function') normItem(row);
+      return row;
+    });
     if(o.status==='pendiente'&&o.adminConfirmado===false&&!o.operarioId&&!o.remisionNo&&!o.acomodoIniciadoEn){
       o.status='por_confirmar';
     }
@@ -1151,7 +1372,11 @@ function renderClientOrder(preserveSearchFocus=false){
   const selStart=searchInp?.selectionStart, selEnd=searchInp?.selectionEnd;
   const c=DB.clients.find(x=>x.id===session.id);
   $('#helloClient').textContent='¡Hola, '+c.name+'! 👋';
-  $('#orderDateLbl').textContent='Pedido para hoy · '+fmtDate(todayStr())+' · corte '+fmtTime12(DB.config.cutoff);
+  const win=getOrderWindow();
+  const lbl=win.mode==='auto_manana'
+    ?`Pedidos ahora van para ${fmtDate(addDaysStr(todayStr(),1))} · corte ${fmtTime12(DB.config.cutoff)}`
+    :`Hora Colombia · ${fmtDate(todayStr())} · corte ${fmtTime12(DB.config.cutoff)}`;
+  $('#orderDateLbl').textContent=lbl;
   const list=sortedForClient(session.id);
   const freq={}; DB.orders.filter(o=>o.clientId===session.id).forEach(o=>o.items.forEach(it=>freq[it.p]=1));
   const visible=productsForClientView(list);
@@ -1220,7 +1445,9 @@ function renderClientOrder(preserveSearchFocus=false){
 function escHtml(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');}
 function setCartUnit(pid,u){
   const p=DB.products.find(x=>x.id===pid);
-  if(!cart[pid]){cart[pid]={q:0,u:p?.unidad_sugerida||'kilo',variacion:'',uCliente:''};}
+  if(pid==='pulpa-para-jugo'&&u!=='unidad'){toast('Pulpa para jugo solo se pide por unidades');return;}
+  if(!cart[pid]){cart[pid]={q:0,u:p?.onlyUnit||p?.unidad_sugerida||'kilo',variacion:'',uCliente:''};}
+  if(pid==='pulpa-para-jugo') cart[pid].u='unidad';
   if(u==='__otro__'){
     cart[pid].u='__otro__';
     const inp=$('#unitIn_'+pid);
@@ -1297,8 +1524,11 @@ function onCartVarSelect(pid,sel){
 }
 function stepQty(pid,d,btn){
   const p=DB.products.find(x=>x.id===pid);
-  if(!cart[pid])cart[pid]={q:0,u:p?.unidad_sugerida||'kilo',variacion:''};
-  cart[pid].q=Math.max(0,(cart[pid].q||0)+d);
+  if(!cart[pid])cart[pid]={q:0,u:pid==='pulpa-para-jugo'?'unidad':(p?.unidad_sugerida||'kilo'),variacion:''};
+  if(pid==='pulpa-para-jugo') cart[pid].u='unidad';
+  if(pid==='fruta-para-jugo'&&d>0&&!(cart[pid].q>0)) cart[pid].q=8;
+  else cart[pid].q=Math.max(0,(cart[pid].q||0)+d);
+  if(pid==='fruta-para-jugo'&&cart[pid].q>0&&cart[pid].q<2) cart[pid].q=8;
   if(cart[pid].q===0)delete cart[pid];
   const row=btn.closest('.prod-row'); const inp=row.querySelector('.qty-in');
   inp.value=cart[pid]?.q||''; inp.classList.remove('bump'); void inp.offsetWidth; inp.classList.add('bump');
@@ -1323,13 +1553,43 @@ function updateCartBar(){
   $('#btnSend').disabled=n===0;
   const cc=$('#cartCount'); cc.style.display=n?'inline-block':'none'; cc.textContent=n;
 }
-function cutoffPassed(){
-  const [h,m]=nowTime().split(':').map(Number);
-  const mins=h*60+(m||0);
-  return mins>=0&&mins<360;
+function cartDelPreviewHtml(choice){
+  const delDate=deliveryDateFromChoice(choice,nowTime());
+  const win=getOrderWindow();
+  let extra='';
+  if(win.requiresOlgaForHoy&&choice==='hoy') extra=' · Olga debe aprobar entrega hoy';
+  else if(cutoffPassed()) extra=' · madrugada — puedes pedir entrega urgente esta mañana';
+  return `<div class="photo-info-banner" style="margin-top:10px" id="delPreview">📦 Entrega: <b>${fmtDate(delDate)}</b>${extra}</div>`;
+}
+
+function setCartDelChoice(choice){
+  window._cartDelChoice=choice;
+  const prev=$('#delPreview');
+  if(prev) prev.outerHTML=cartDelPreviewHtml(choice);
+  document.querySelectorAll('.del-day-picker .btn').forEach(b=>{
+    const isHoy=b.textContent.includes('HOY');
+    b.className='btn '+(isHoy?(choice==='hoy'?'green':'ghost'):(choice==='manana'?'green':'ghost'));
+  });
+  const foot=$('#sheetFoot');
+  if(!foot) return;
+  foot.innerHTML='';
+  const win=getOrderWindow();
+  const addFootBtn=(label,cls,fn)=>{
+    const b=document.createElement('button'); b.className='btn '+cls; b.textContent=label; b.onclick=fn; foot.appendChild(b);
+  };
+  if(win.requiresOlgaForHoy&&choice==='hoy'){
+    addFootBtn('👩‍🌾 Solicitarle a Olga','orange',()=>void confirmClientOrder({olgaRequest:true}));
+  }else{
+    addFootBtn('✅ Confirmar pedido','green',()=>void confirmClientOrder({}));
+  }
+  if(cutoffPassed()) addFootBtn('🚨 Entrega urgente esta mañana','ghost',()=>void confirmClientOrder({urgent:true}));
 }
 
 function openCartReview(){
+  const win=getOrderWindow();
+  window._cartDelChoice=win.showChoice?'hoy':'manana';
+  const delTimeVal=$('#delTime')?.value||'07:00';
+  const descVal=$('#ordDesc')?.value||'';
   const rows=Object.entries(cart).filter(([,v])=>v.q>0).map(([pid,v])=>{
     const isCustom=v.isCustom||String(pid).startsWith('__custom_');
     const p=isCustom?null:DB.products.find(x=>x.id===pid);
@@ -1338,26 +1598,26 @@ function openCartReview(){
     const ql=v.u==='valor'?'$'+fmtMoney(v.q):`${v.q} ${uLbl}`;
     const thumb=isCustom?'📝':(typeof productThumbHTML==='function'?productThumbHTML(p,28):p?.emoji||'🥬');
     return `<div class="rev-row"><span class="re">${isCustom?thumb:`${thumb}`}</span>
-      <div class="rn"><b>${escHtml(name)}${v.variacion?' · '+escHtml(v.variacion):''}</b><span>${ql}</span></div></div>`;
+      <div class="rn"><b>${escHtml(name)}${v.variacion?' · '+escHtml(v.variacion):''}</b><span class="order-qty">${ql}</span></div></div>`;
   }).join('');
-  const cutMsg=`<div class="warn-note" style="background:var(--green-soft);border-color:var(--green);color:var(--green-dark)"><span class="wi">⏰</span>Recuerda que puedes enviar tu pedido hasta la ${fmtCutoffLabel()} para la compra de madrugada (3–6 am).</div>`;
-  const delDate=typeof deliveryDateForOrder==='function'?deliveryDateForOrder(nowTime()):todayStr();
-  const afterCut=cutoffPassed();
-  const delPreview=`<div class="photo-info-banner" style="margin-top:10px">📦 Entrega estimada: <b>${fmtDate(delDate)}</b>${afterCut?' · después de medianoche — usa el botón urgente si necesitas entrega esta mañana':''}</div>`;
-  openSheet('🛒 Confirma tu pedido',cutMsg+rows+delPreview+`
+  const cutMsg=`<div class="warn-note" style="background:var(--green-soft);border-color:var(--green);color:var(--green-dark)"><span class="wi">⏰</span>${deliveryWindowHint()} Hora Colombia (${nowTime()}).</div>`;
+  const dayPicker=win.showChoice?`<div class="del-day-picker">
+      <button type="button" class="btn ${window._cartDelChoice==='hoy'?'green':'ghost'}" onclick="setCartDelChoice('hoy')">☀️ HOY</button>
+      <button type="button" class="btn ${window._cartDelChoice==='manana'?'green':'ghost'}" onclick="setCartDelChoice('manana')">🌅 Mañana</button>
+    </div>`:'';
+  openSheet('🛒 Confirma tu pedido',cutMsg+rows+cartDelPreviewHtml(window._cartDelChoice)+dayPicker+`
     <div class="field" style="margin-top:12px"><label>Hora de entrega deseada</label>
-      <input type="time" id="delTime" value="07:00"></div>
+      <input type="time" id="delTime" value="${delTimeVal}"></div>
     <div class="field"><label>Descripción (opcional)</label>
-      <input id="ordDesc" placeholder="Ej.: Pedido desayuno, pedido cena…"></div>`,
-    [
-      {label:'✅ Confirmar',cls:'green',fn:()=>void confirmClientOrder(false)},
-      {label:'🚨 Pedir entrega esta mañana (después de medianoche)',cls:'orange',fn:()=>void confirmClientOrder(true)},
-    ]);
+      <input id="ordDesc" placeholder="Ej.: Pedido desayuno, pedido cena…" value="${escHtml(descVal)}"></div>`,[]);
+  setCartDelChoice(window._cartDelChoice);
 }
-async function confirmClientOrder(urgent){
+async function confirmClientOrder(opts={}){
   const delTime=$('#delTime')?.value||'';
   const desc=$('#ordDesc')?.value||'';
-  await submitOrder(session.id,'app',false,delTime,desc,{urgent});
+  const win=getOrderWindow();
+  const choice=win.showChoice?(window._cartDelChoice||'manana'):'manana';
+  await submitOrder(session.id,'app',false,delTime,desc,{...opts,deliveryDayChoice:choice});
 }
 async function submitOrder(clientId,channel,fromAdmin=false,deliveryTime='',description='',opts={}){
   const items=Object.entries(cart).filter(([,v])=>v.q>0).map(([pid,v])=>{
@@ -1373,26 +1633,47 @@ async function submitOrder(clientId,channel,fromAdmin=false,deliveryTime='',desc
       variacion:v.variacion||'',uCliente:uCliente||fmtUnit(u),
     };
     if(u==='valor') it.valorPedido=+v.q;
+    if(typeof normSpecialItem==='function') normSpecialItem(it);
     return it;
   });
-  if(!items.length)return;
+  if(!items.length){toast('Agrega al menos un producto al pedido');return;}
   const t=nowTime();
   const orderId=uid();
-  const delDate=typeof deliveryDateForOrder==='function'?deliveryDateForOrder(t):todayStr();
-  DB.orders.unshift({id:orderId,clientId,date:todayStr(),time:t,channel,status:'por_confirmar',
+  const choice=opts.deliveryDayChoice||'manana';
+  const delDate=deliveryDateFromChoice(choice,t);
+  const needsOlga=!!opts.olgaRequest||(getOrderWindow(t).requiresOlgaForHoy&&choice==='hoy');
+  const order={
+    id:orderId,clientId,date:todayStr(),time:t,channel,status:'por_confirmar',
     description:description||'',deliveryTime:deliveryTime||'',deliveryDate:delDate,
-    shift:orderShift(t),items,entregaUrgente:!!opts.urgent});
-  if(opts.urgent&&typeof sendUrgentRequestViaChat==='function'){
+    shift:orderShift(t),items:items.map(it=>({...it})),
+    entregaUrgente:!!opts.urgent,
+    entregaSolicitud:needsOlga?{estado:'pendiente',tipo:'hoy_mediodia',creadoEn:new Date().toISOString()}:null,
+  };
+  DB.orders.unshift(order);
+  cart={};
+  showAppLoader('Enviando pedido…');
+  closeSheet();
+  try{
+    await flushSave();
+  }catch(e){
+    hideAppLoader();
+    DB.orders=DB.orders.filter(o=>o.id!==orderId);
+    toast('No se pudo guardar el pedido. Intenta de nuevo.');
+    return;
+  }
+  if(needsOlga&&typeof sendOlgaEntregaRequest==='function'){
+    sendOlgaEntregaRequest({clientId,orderId,deliveryTime,delDate,description});
+  }else if(opts.urgent&&typeof sendUrgentRequestViaChat==='function'){
     sendUrgentRequestViaChat({clientId,orderId,mensaje:'🚨 Solicito entrega lo antes posible · '+fmtTime12(deliveryTime||t)});
   }
-  audit('Creó pedido',`${clientName(clientId)} · ${items.length} productos · ${shiftLabel(orderShift(t))}${opts.urgent?' · URGENTE':''}`);
-  cart={}; closeSheet();
-  await flushSave();
+  audit('Creó pedido',`${clientName(clientId)} · ${items.length} productos · entrega ${fmtDate(delDate)}${needsOlga?' · solicitud Olga':''}${opts.urgent?' · URGENTE':''}`);
+  hideAppLoader();
   if(fromAdmin){toast('Pedido registrado ✅');adminNav('orders');}
   else{
-    const afterCut=cutoffPassed();
-    const prefix=afterCut?'Tu pedido quedó registrado para':'Tu pedido quedó registrado — Olga lo confirmará pronto. Entrega';
-    $('#successMsg').textContent=`${prefix} ${fmtDate(delDate)}.${opts.urgent?' Le enviamos tu solicitud urgente a Olga por chat para entrega esta mañana.':''} Puedes hacer otro pedido hoy si lo necesitas.`;
+    let msg;
+    if(needsOlga) msg=`Tu solicitud de entrega para HOY fue enviada a Olga por chat. Te avisaremos cuando responda. Entrega prevista: ${fmtDate(delDate)}${deliveryTime?' · '+fmtTime12(deliveryTime):''}.`;
+    else msg=`Tu pedido quedó registrado — Olga lo confirmará pronto. Entrega ${fmtDate(delDate)}${deliveryTime?' · '+fmtTime12(deliveryTime):''}.${opts.urgent?' Le enviamos tu solicitud urgente por chat.':''} Puedes hacer otro pedido hoy si lo necesitas.`;
+    $('#successMsg').textContent=msg;
     launchConfetti(); showView('v-success');
   }
 }
@@ -1510,7 +1791,7 @@ function closeManualOrder(){goBackNav();}
 function closeRemisionView(){goBackNav();}
 function renderFacturacion(){if(typeof window._renderFacturacionImpl==='function')window._renderFacturacionImpl();}
 function renderManualOrderPage(){if(typeof window._renderManualOrderPage==='function')window._renderManualOrderPage();}
-const ordersOf=(date)=>DB.orders.filter(o=>o.date===date&&o.status!=='anulado');
+const ordersOf=(date)=>DB.orders.filter(o=>(o.date===date||orderDeliveryDate(o)===date)&&o.status!=='anulado');
 
 function renderDash(){if(typeof window._renderDashImpl==='function')window._renderDashImpl();}
 function renderProveedores(){if(typeof window.renderProveedores==='function')window.renderProveedores();}
@@ -1882,14 +2163,15 @@ window.addEventListener('resize',()=>{if(session&&session.role==='client'&&$('#v
 
 /* ---------- arranque (init al final, tras features.js) ---------- */
 </script>
-<script src="features.js"></script>
-<script src="compras.js"></script>
-<script src="proveedores.js"></script>
-<script src="interpret.js"></script>
-<script src="workflow.js"></script>
-<script src="messaging.js"></script>
+<script src="features.js?v=20260911a"></script>
+<script src="compras.js?v=20260911a"></script>
+<script src="proveedores.js?v=20260911a"></script>
+<script src="interpret.js?v=20260911a"></script>
+<script src="workflow.js?v=20260911a"></script>
+<script src="messaging.js?v=20260911a"></script>
 <script>
 (async function init(){
+  const st=$('#buildStamp'); if(st) st.textContent='Versión '+ (window.APP_BUILD||'?');
   await loadDB();
   migrateDB();
   if(typeof applyCatalogExtensions==='function') applyCatalogExtensions();
