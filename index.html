@@ -764,14 +764,14 @@ input,select,textarea{font-family:'Nunito',sans-serif;font-size:16px}
 </div>
 <div id="printArea" style="display:none"></div>
 
-<!-- build: 20260911g login-solo-servidor -->
-<script>window.APP_BUILD='20260911g';</script>
-<script src="time.js?v=20260911g"></script>
-<script src="catalog.js?v=20260911g"></script>
-<script src="catalog-ext.js?v=20260911g"></script>
-<script src="order-specials.js?v=20260911g"></script>
-<script src="units.js?v=20260911g"></script>
-<script src="config.local.js?v=20260911g" onerror="window.FRUVER_CONFIG=window.FRUVER_CONFIG||{}"></script>
+<!-- build: 20260911h login-rapido-auth -->
+<script>window.APP_BUILD='20260911h';</script>
+<script src="time.js?v=20260911h"></script>
+<script src="catalog.js?v=20260911h"></script>
+<script src="catalog-ext.js?v=20260911h"></script>
+<script src="order-specials.js?v=20260911h"></script>
+<script src="units.js?v=20260911h"></script>
+<script src="config.local.js?v=20260911h" onerror="window.FRUVER_CONFIG=window.FRUVER_CONFIG||{}"></script>
 <script>
 /* ============================================================
    FRUVER PEDIDOS — SPA demo (fase de prototipo de interfaz)
@@ -895,12 +895,16 @@ function loadDBShowRetryToast(){
   toast('Sin conexión, reintentando…');
 }
 
-async function fetchApiDB(timeoutMs=20000){
+async function fetchWithTimeout(url,opts={},timeoutMs=12000){
   const ctrl=new AbortController();
   const timer=setTimeout(()=>ctrl.abort(),timeoutMs);
   try{
-    return await fetch(API_DB,{cache:'no-store',signal:ctrl.signal});
+    return await fetch(url,{...opts,signal:ctrl.signal});
   }finally{clearTimeout(timer);}
+}
+
+async function fetchApiDB(timeoutMs=20000){
+  return fetchWithTimeout(API_DB,{cache:'no-store'},timeoutMs);
 }
 
 async function loadDB(force=false,opts={}){
@@ -1346,21 +1350,56 @@ function applyLoginSession(auth){
   }
   toast('Respuesta de acceso inválida');
 }
+async function fetchAuthLogin(user,pass){
+  const res=await fetchWithTimeout('/api/auth',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({username:user,password:pass}),
+  },8000);
+  if(res.status===401) return {fail:'bad'};
+  if(!res.ok) return {fail:'net'};
+  const auth=await res.json();
+  return auth?.role?{auth}:null;
+}
+
 async function doLogin(){
   const user=$('#loginUser').value.trim().toLowerCase();
   const pass=$('#loginPass').value.trim();
   if(!user||!pass){toast('Ingresa usuario y contraseña');return;}
   stopSync();
-  showAppLoader('Conectando con el servidor…');
-  const ok=await loadDB(true,{silent:true,forLogin:true});
+  showAppLoader('Entrando…');
+  let auth=null;
+  try{
+    const r=await fetchAuthLogin(user,pass);
+    if(r?.fail==='bad'){hideAppLoader();loginWrongCredentials();return;}
+    if(r?.auth) auth=r.auth;
+  }catch(e){console.warn('auth',e);}
+  if(!auth){
+    const ok=await loadDB(true,{silent:true,backoffs:[],timeoutMs:10000});
+    if(ok&&dbLoadedFromServer) auth=tryLocalLogin(user,pass);
+    if(!auth){
+      hideAppLoader();
+      toast(dbLoadedFromServer?'Usuario o contraseña incorrectos':'Sin conexión. Revisa internet e intenta de nuevo.');
+      if(dbLoadedFromServer) loginWrongCredentials();
+      return;
+    }
+  }
+  if(auth.role==='admin') session={role:'admin',name:auth.name};
+  else if(auth.role==='worker') session={role:'worker',id:auth.id,name:auth.name};
+  else session={role:'client',id:auth.id,name:auth.name};
+  saveSession();
+  showAppLoader('Cargando datos…');
+  await loadDB(true,{silent:true,backoffs:[],timeoutMs:12000});
   hideAppLoader();
-  if(!ok||!dbLoadedFromServer){
-    toast('Sin conexión con el servidor. Revisa internet e intenta de nuevo.');
+  if(!dbLoadedFromServer){
+    session=null; try{localStorage.removeItem(SESSION_KEY);}catch(e){}
+    toast('Sin conexión al cargar datos. Intenta de nuevo.');
     return;
   }
-  const auth=tryLocalLogin(user,pass);
-  if(!auth) loginWrongCredentials();
-  else applyLoginSession(auth);
+  startSync();
+  if(auth.role==='admin'){adminNav('dash');showView('v-admin');}
+  else if(auth.role==='worker'){$('#workerSub').textContent=fmtDate(todayStr());renderWorker();showView('v-worker');}
+  else{cart={};nav('order');}
 }
 
 /* ---------- modal genérico ---------- */
@@ -2216,12 +2255,12 @@ window.addEventListener('resize',()=>{if(session&&session.role==='client'&&$('#v
 
 /* ---------- arranque (init al final, tras features.js) ---------- */
 </script>
-<script src="features.js?v=20260911g"></script>
-<script src="compras.js?v=20260911g"></script>
-<script src="proveedores.js?v=20260911g"></script>
-<script src="interpret.js?v=20260911g"></script>
-<script src="workflow.js?v=20260911g"></script>
-<script src="messaging.js?v=20260911g"></script>
+<script src="features.js?v=20260911h"></script>
+<script src="compras.js?v=20260911h"></script>
+<script src="proveedores.js?v=20260911h"></script>
+<script src="interpret.js?v=20260911h"></script>
+<script src="workflow.js?v=20260911h"></script>
+<script src="messaging.js?v=20260911h"></script>
 <script>
 (async function init(){
   const st=$('#buildStamp'); if(st) st.textContent='Versión '+ (window.APP_BUILD||'?');
